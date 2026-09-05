@@ -1,0 +1,69 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# --- Secrets (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- Model weights & caches (managed by lightman.models, never committed) ---
+models/cache/
+*.task
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+*.tflite
+*.bin
+*.engine
+*.mlmodel
+*.mlpackage
+
+# --- Media & subject recordings (never commit private people) ---
+samples/
+recordings/
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.flac
+# Small licensed test fixtures are allowed explicitly:
+!tests/fixtures/**
+
+# --- Analysis outputs ---
+output/
+runs/
+experiments/runs/
+
+# --- Datasets (adapters + manifests are tracked, data is not) ---
+datasets/data/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
