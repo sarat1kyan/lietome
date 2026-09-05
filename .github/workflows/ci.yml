@@ -69,7 +69,9 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
-      - run: uv run pip-audit --strict --desc --skip-editable
+      # Audit the locked dependency set (not the editable project itself).
+      - run: uv export --frozen --no-emit-project --no-hashes --format requirements-txt -o requirements-audit.txt
+      - run: uv run pip-audit --strict --desc --disable-pip --no-deps -r requirements-audit.txt
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

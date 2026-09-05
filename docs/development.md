@@ -18,7 +18,7 @@ uv run pytest -q                        # fast + model tests (model tests skip i
 uv run pytest -q -m "not model"         # what CI's matrix runs
 uv run ruff check src tests --fix && uv run ruff format src tests
 uv run mypy
-uv run pip-audit --skip-editable
+uv export --frozen --no-emit-project --no-hashes --format requirements-txt -o req.txt && uv run pip-audit --strict --disable-pip --no-deps -r req.txt
 uv run lightman analyze samples/clip.mp4 -o output/ --fps 15
 uv run python experiments/bench_face_landmarker.py
 ```
