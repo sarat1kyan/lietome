@@ -1,6 +1,6 @@
 # Project state
 
-Last updated: 2026-09-05 (session 2: AU backend, audio stage, Docker). Facts only.
+Last updated: 2026-09-05 (session 2: AU backend, audio stage, Docker, live mode). Facts only.
 
 ## Phase
 
@@ -26,6 +26,9 @@ published as release `models-v1` on the repository; no package release.
   "audio") and `speech_pause` events; audio quality (SNR, clipping, speech fraction); report
   section. `[audio]` config.
 * Docker image (python:3.12-slim + uv, non-root, face model baked in), built in CI.
+* Live mode (`lightman live`): webcam or real-time file replay, capture thread + queue(2,
+  drop oldest), streaming baseline/deviation/blink detectors verified against the offline
+  ones, console + labelled preview window, same session outputs. Video only.
 * Action Units: OpenGraphAU stage-2 via onnxruntime (`AUDetector` protocol; resnet50 default,
   resnet18 fast), 41 `au.*` columns, AU deviation events labelled with FACS names. `[au]`
   config: enabled, model, stride, prefer_gpu, min_face_px. `lightman[cuda]` extra.
@@ -58,6 +61,8 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
 * AU resnet50 costs ~88 ms/frame CPU in the pipeline (20 s clip -> 58 s). Use `au.stride`,
   resnet18, or CUDA. GPU path (onnxruntime-gpu) not yet exercised.
 * Swin-Tiny stage-2 export was not completed (script produced no output); not offered.
+* Live: no microphone/audio yet; baseline frozen after calibration; camera access could not
+  be validated on the development machine (terminal lacks camera permission), only file replay.
 * Audio: no diarization (multiple speakers pool into one baseline), no ASR, no question/answer
   timing (response latency), jitter/shimmer are frame-track approximations, first pyin call
   costs ~25 s of numba JIT per process. Only validated on synthesized speech and tones.
@@ -85,8 +90,9 @@ See docs/benchmarks.md. M5 Pro CPU: 3.4-3.8 ms/frame landmarker; 20 s clip end-t
    pose signs, blink detection precision, event plausibility; tune floors/thresholds; record.
 2. Phase 3 continued: AU temporal smoothing (probabilities jitter frame to frame), fp16/int8
    ONNX quantization, CUDA benchmark on the RTX 3060 Ti, camera-motion compensation.
-3. Camera-motion compensation / global motion energy so pans and zooms do not read as behavior.
-4. Phase 6: ASR (faster-whisper / whisper.cpp, opt-in), word timings, turn structure and
+3. Live audio (sounddevice capture -> streaming VAD/F0) and a WebSocket event stream.
+4. Camera-motion compensation / global motion energy so pans and zooms do not read as behavior.
+5. Phase 6: ASR (faster-whisper / whisper.cpp, opt-in), word timings, turn structure and
    response latency; diarization (pyannote, opt-in) or simple speaker clustering.
 5. Report/UI: click-to-seek video with landmark overlay (needs a small JS player; keep it
    self-contained).

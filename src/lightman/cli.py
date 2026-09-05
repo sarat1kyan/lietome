@@ -110,6 +110,91 @@ def analyze(
 
 
 @app.command()
+def live(
+    camera: Annotated[int, typer.Option(help="Camera index")] = 0,
+    source: Annotated[
+        Path | None,
+        typer.Option(help="Replay a video file at real-time pace instead of a camera (testing)"),
+    ] = None,
+    seconds: Annotated[float | None, typer.Option(help="Stop after this many seconds")] = None,
+    out: Annotated[Path, typer.Option("--out", "-o")] = Path("output"),
+    config: Annotated[
+        Path | None, typer.Option("--config", "-c", exists=True, dir_okay=False)
+    ] = None,
+    preview: Annotated[
+        bool, typer.Option("--preview/--no-preview", help="Show a live window")
+    ] = True,
+    au: Annotated[
+        bool, typer.Option("--au/--no-au", help="Run the Action Unit model (slower)")
+    ] = False,
+    subject: Annotated[str, typer.Option(help="Anonymous subject id")] = "subject_001",
+) -> None:
+    """Live analysis from a webcam. Frames are processed in memory; only features and events
+    are written. Baseline = first `baseline.window_s` seconds. Press q in the preview to stop."""
+    import threading
+
+    from lightman.live.runner import console_sink, run_live
+    from lightman.live.sources import FileSource, WebcamSource
+    from lightman.models import ModelRegistry
+    from lightman.pipeline.analyze import default_au_factory, default_landmarker_factory
+
+    try:
+        cfg = LightmanConfig.load(config)
+        if not au:
+            cfg = cfg.model_copy(update={"au": cfg.au.model_copy(update={"enabled": False})})
+        elif config is None:
+            # Live default: the fast model keeps 30 fps on CPU; resnet50 halves the frame rate.
+            cfg = cfg.model_copy(
+                update={"au": cfg.au.model_copy(update={"model": "opengraphau/resnet18_s2"})}
+            )
+        registry = ModelRegistry(
+            cache_dir=cfg.models.cache_dir, allow_download=cfg.models.allow_download
+        )
+        landmarker = default_landmarker_factory(cfg, registry)
+        au_detector = default_au_factory(cfg, registry) if cfg.au.enabled else None
+        src = FileSource(source) if source else WebcamSource(camera)
+        typer.secho(
+            f"LIVE ANALYSIS: {src.description}. Only features/events are stored; "
+            f"no frames are saved. Calibrating baseline for the first "
+            f"{cfg.baseline.window_s:.0f} s.",
+            fg=typer.colors.YELLOW,
+        )
+        prev = None
+        if preview:
+            from lightman.live.preview import Preview
+
+            prev = Preview()
+        stop = threading.Event()
+        try:
+            session_dir = run_live(
+                src,
+                cfg=cfg,
+                out_dir=out,
+                landmarker=landmarker,
+                au_detector=au_detector,
+                duration_s=seconds,
+                subject_id=subject,
+                sink=console_sink,
+                preview=prev,
+                stop_flag=stop,
+            )
+        except KeyboardInterrupt:
+            stop.set()
+            raise
+        finally:
+            if prev is not None:
+                prev.close()
+            landmarker.close()
+            if au_detector is not None:
+                au_detector.close()
+    except LightmanError as exc:
+        _fail(exc)
+        return
+    typer.echo(f"output:   {session_dir}")
+    typer.echo(f"stats:    {(session_dir / 'analysis.json').read_text()}")
+
+
+@app.command()
 def doctor() -> None:
     """Inspect the runtime environment (OS, CPU, accelerators, key package versions)."""
     from lightman.core.env import snapshot_environment
