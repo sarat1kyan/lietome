@@ -60,6 +60,12 @@ subject-independent (LOSO) and cross-dataset evaluation, not as a product featur
 
 ## Voice
 
+Current implementation: Silero VAD, pyin F0, RMS energy, pauses, syllable-rate proxy and
+*approximate* jitter/shimmer from frame tracks. Baselines use speech frames only. Without
+diarization, several speakers are pooled into one baseline; without question/answer structure,
+response latency is not measured. The pipeline reports voice pitch/loudness deviations and
+long pauses as observations only.
+
 Decades of research and reviews by the U.S. National Research Council and others find that
 "voice stress analysis" devices perform at chance for deception. Acoustic features (F0, energy,
 jitter, shimmer, speech rate, pauses, response latency) *are* measurable and *do* vary with

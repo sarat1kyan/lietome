@@ -16,3 +16,8 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 - Action Unit detector: OpenGraphAU stage-2 (ResNet-50 default, ResNet-18 fast) via ONNX
   Runtime behind an `AUDetector` protocol; 41 `au.*` feature columns; AU deviation events.
 - `lightman[cuda]` extra (onnxruntime-gpu) for NVIDIA machines.
+- Audio stage: PyAV 16 kHz decode aligned to the video clock, Silero VAD (ONNX), pyin F0,
+  energy, speech segments with pause/rate/jitter-approx features, speech-only baseline,
+  voice deviation and pause events, `audio_features.parquet`, `speech_segments.json`,
+  report section.
+- Dockerfile and CI image build.

@@ -1,11 +1,11 @@
 # Project state
 
-Last updated: 2026-09-05 (session 2: AU backend). Facts only.
+Last updated: 2026-09-05 (session 2: AU backend, audio stage, Docker). Facts only.
 
 ## Phase
 
 Phase 0 (research/architecture), 1 (media ingestion), 2 (single-face prerecorded analysis)
-complete; Phase 3 started with a real Action Unit backend. Version `0.1.0a0`. Model assets
+complete; Phase 3 started (AU backend); Phase 5 first slice done (audio). Version `0.1.0a0`. Model assets
 published as release `models-v1` on the repository; no package release.
 
 ## Working
@@ -18,6 +18,14 @@ published as release `models-v1` on the repository; no package release.
 * Media: PyAV probe/decode, PTS-exact us timestamps, VFR, display rotation, time-based
   subsampling, hostile-input limits (size, duration, pixels, frames, streams).
 * Face: MediaPipe Face Landmarker backend (478 landmarks, 52 blendshapes, transform), first face.
+* Audio: PyAV 16 kHz decode aligned to the video origin; Silero VAD v6 (ONNX); pyin F0,
+  RMS energy, voicing and speech probability per 20 ms frame (`audio_features.parquet`);
+  speech segments with pause-before, F0 median/spread (semitones), syllable-rate proxy,
+  approximate jitter/shimmer (`speech_segments.json`); speech-only baseline
+  (`audio_baseline.json`); `voice.f0_hz` / `voice.energy_db` deviation events (source
+  "audio") and `speech_pause` events; audio quality (SNR, clipping, speech fraction); report
+  section. `[audio]` config.
+* Docker image (python:3.12-slim + uv, non-root, face model baked in), built in CI.
 * Action Units: OpenGraphAU stage-2 via onnxruntime (`AUDetector` protocol; resnet50 default,
   resnet18 fast), 41 `au.*` columns, AU deviation events labelled with FACS names. `[au]`
   config: enabled, model, stride, prefer_gpu, min_face_px. `lightman[cuda]` extra.
@@ -50,6 +58,9 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
 * AU resnet50 costs ~88 ms/frame CPU in the pipeline (20 s clip -> 58 s). Use `au.stride`,
   resnet18, or CUDA. GPU path (onnxruntime-gpu) not yet exercised.
 * Swin-Tiny stage-2 export was not completed (script produced no output); not offered.
+* Audio: no diarization (multiple speakers pool into one baseline), no ASR, no question/answer
+  timing (response latency), jitter/shimmer are frame-track approximations, first pyin call
+  costs ~25 s of numba JIT per process. Only validated on synthesized speech and tones.
 * Head-pose yaw/pitch sign conventions vs. camera not verified on real footage (only the
   mathematical round-trip is tested). Deviation logic is sign-agnostic so results are unaffected.
 * Near-constant signals hit the scale floor -> over-sensitive 3SD events on static content
@@ -58,7 +69,7 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
 * Baseline window = first 30 s of the recording; no question-aware or adaptive baseline yet.
 * Single face only; no audio; no speech; no live mode.
 * Quality heuristic covers size and pose only (no blur/illumination/occlusion).
-* Thumbnails are PNG (~100 KB each at 256 px); report embeds them base64 (~0.7 MB for 3).
+* Thumbnails are JPEG (q82, 256 px) embedded base64 in the report.
 * `storage.store_landmarks` exists in config but landmark persistence is not implemented.
 * PyAV and OpenCV each bundle FFmpeg; macOS prints objc duplicate-class warnings at import.
   No functional impact observed.
@@ -75,8 +86,8 @@ See docs/benchmarks.md. M5 Pro CPU: 3.4-3.8 ms/frame landmarker; 20 s clip end-t
 2. Phase 3 continued: AU temporal smoothing (probabilities jitter frame to frame), fp16/int8
    ONNX quantization, CUDA benchmark on the RTX 3060 Ti, camera-motion compensation.
 3. Camera-motion compensation / global motion energy so pans and zooms do not read as behavior.
-4. Phase 5 audio: PyAV audio decode -> Silero VAD -> F0/energy/rate/pauses -> audio events on the
-   shared time base.
+4. Phase 6: ASR (faster-whisper / whisper.cpp, opt-in), word timings, turn structure and
+   response latency; diarization (pyannote, opt-in) or simple speaker clustering.
 5. Report/UI: click-to-seek video with landmark overlay (needs a small JS player; keep it
    self-contained).
 6. Run CI on GitHub once a remote exists (user decision); add Linux + CUDA benchmarks on the

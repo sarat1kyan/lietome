@@ -27,6 +27,17 @@ means from `analysis.json -> au_inference_ms_per_frame` on the 20 s sample.
 | Apple M5 Pro | resnet18_s2 (48 MB) | 17.0 ms | 20.4 ms (p95 24) | 40.6 ms | 10.9 ms | 40.9 ms |
 | RTX 3060 Ti | both | not yet measured (CUDA EP) | | | | |
 
+## Audio (16 kHz mono, M5 Pro CPU)
+
+| Component | Input | Time | Notes |
+|---|---|---|---|
+| Silero VAD v6 ONNX | 5.6 s speech (176 chunks) | 12 ms | 0.002x real time, single thread |
+| librosa pyin (hop 20 ms, frame 64 ms, 60-400 Hz) | 3 s | 36 ms steady state; ~25 s first call | first call is numba JIT compilation |
+| librosa yin (same) | 3 s | 3 ms | no voicing decision; kept as a future live-mode option |
+
+pyin accuracy on a synthetic 90-150 Hz glide: median error 0.28 Hz, p95 0.70 Hz; 0/29
+pause frames marked voiced. yin: 0.18 Hz median but marks silence as voiced.
+
 ## End-to-end `lightman analyze` (probe -> decode -> landmarks -> features -> baseline -> events -> outputs)
 
 Sample: 20 s, 30 fps, 640x480 H.264 + AAC (synthetic pan/zoom over the licensed portrait).
@@ -36,6 +47,9 @@ Sample: 20 s, 30 fps, 640x480 H.264 + AAC (synthetic pan/zoom over the licensed 
 | Apple M5 Pro, AU disabled | 3.45 s | 2.73 s (600 frames -> 4.6 ms/frame incl. decode) | 0.37 s | 0.29 s | ~ 5.8x faster than real time |
 | Apple M5 Pro, AU resnet18 | 17.7 s | 16.6 s | 0.72 s | 0.37 s | ~ 1.1x real time |
 | Apple M5 Pro, AU resnet50 (default) | 58.2 s | 57.1 s | 0.63 s | 0.38 s | ~ 0.34x real time |
+
+Audio stage on a 17 s clip with synthesized speech (same machine): decode 18 ms, VAD 57 ms,
+frame features (pyin) 1.43 s, total audio stage ~1.5 s (0.09x real time) after the JIT warm-up.
 
 Command: `uv run lightman analyze samples/portrait_kenburns_20s.mp4 -o output/` (timings in
 `analysis.json -> timing_ms`).

@@ -56,6 +56,15 @@ access; use `lightman models import <id> <file>` for air-gapped installs.
 * Not a facial-expression or emotion classifier. Outputs are occurrence probabilities, not
   FACS intensities (A-E).
 
+### silero/vad_v6
+
+* Silero VAD v6.2.1, `silero_vad.onnx` from the tagged upstream repository (MIT), 2.3 MB.
+  Stateful: 512-sample chunks at 16 kHz with 64 samples of context prepended, state (2,1,128).
+  Measured: 5.6 s of speech in 12 ms on M5 Pro CPU (0.002x real time). On synthesized speech
+  87% of chunks scored > 0.5; on Gaussian noise the maximum was 0.06.
+* Our wrapper (`audio/vad.py`) reproduces the upstream framing; using the raw model without the
+  context window silently yields ~0 everywhere (found the hard way; tested).
+
 ## Planned
 
 * AU intensity (not just occurrence) and a measured comparison of OpenGraphAU vs blendshape
