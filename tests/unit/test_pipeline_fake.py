@@ -106,6 +106,31 @@ class FakeAUDetector:
         self.closed = True
 
 
+class FakeVAD:
+    """Marks the middle third of the audio as speech."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    @property
+    def provenance(self) -> Provenance:
+        return Provenance(
+            extractor_id="audio.fake_vad",
+            extractor_version="0",
+            runtime="test",
+            lightman_version=__version__,
+        )
+
+    def probabilities(self, samples: np.ndarray) -> np.ndarray:
+        n = samples.size // 512
+        p = np.zeros(n, dtype=np.float32)
+        p[n // 3 : 2 * n // 3] = 0.95
+        return p
+
+    def close(self) -> None:
+        self.closed = True
+
+
 @pytest.fixture
 def cfg() -> LightmanConfig:
     return LightmanConfig(
@@ -182,6 +207,48 @@ def test_pipeline_end_to_end_with_fake_backend(tmp_path: Path, cfg: LightmanConf
     html = (d / "report.html").read_text()
     assert "does not detect lies" in html
     assert "<svg" in html and "browDownLeft" in html
+
+
+def test_pipeline_with_audio_stage(tmp_path: Path, cfg: LightmanConfig) -> None:
+    video = write_video(
+        tmp_path / "va.mp4", noise_frames(90, w=160, h=120), fps=30, with_audio=True
+    )
+    fake_vad = FakeVAD()
+    cfg = cfg.model_copy(update={"au": cfg.au.model_copy(update={"enabled": False})})
+    result = analyze_video(
+        video,
+        tmp_path / "out",
+        cfg,
+        landmarker_factory=lambda _c, _r: FakeLandmarker(),
+        vad_factory=lambda _c, _r: fake_vad,
+    )
+    d = result.session_dir
+    assert result.audio is not None
+    assert (d / "audio_features.parquet").is_file()
+    assert (d / "speech_segments.json").is_file()
+    assert (d / "audio_baseline.json").is_file()
+    segs = json.loads((d / "speech_segments.json").read_text())["segments"]
+    assert len(segs) == 1
+    assert 0.8 < segs[0]["start_us"] / 1e6 < 1.2  # middle third of 3 s
+    assert segs[0]["f0_median_hz"] == pytest.approx(220, abs=5)  # conftest tone is 220 Hz
+    table = pq.read_table(d / "audio_features.parquet")
+    assert {"t_us", "voice.f0_hz", "voice.energy_db", "voice.speech_prob"} <= set(
+        table.column_names
+    )
+    assert [p.extractor_id for p in result.manifest.provenance] == ["face.fake", "audio.fake_vad"]
+    assert result.summary["audio"]["speech_segments"] == 1
+    html = (d / "report.html").read_text()
+    assert "voice.f0_hz" in html
+
+
+def test_pipeline_video_without_audio_notes_it(tmp_path: Path, cfg: LightmanConfig) -> None:
+    video = write_video(tmp_path / "v.mp4", noise_frames(30, w=160, h=120), fps=30)
+    cfg = cfg.model_copy(update={"au": cfg.au.model_copy(update={"enabled": False})})
+    result = analyze_video(
+        video, tmp_path / "out", cfg, landmarker_factory=lambda _c, _r: FakeLandmarker()
+    )
+    assert result.audio is None
+    assert any("no audio stream" in n for n in result.manifest.quality.notes)
 
 
 def test_pipeline_no_face_at_all(tmp_path: Path, cfg: LightmanConfig) -> None:

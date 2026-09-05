@@ -97,6 +97,20 @@ small{color:var(--muted)}
     {% endfor %}
   </section>
 
+  {% if audio_plots %}
+  <section class="panel">
+    <h2>Voice: deviation from the speaker's baseline (speech frames only)</h2>
+    <small>{{ audio_segments|length }} speech segments{% if audio_quality %}, speech fraction {{ '%.0f'|format(audio_quality.speech_fraction*100) }}%{% if audio_quality.snr_db is not none %}, SNR {{ '%.0f'|format(audio_quality.snr_db) }} dB{% endif %}, clipping {{ '%.2f'|format(audio_quality.clipping_fraction*100) }}%{% endif %}; audio baseline quality {{ '%.2f'|format(audio_baseline.quality) }}</small>
+    {% for n in audio_baseline.notes %}<div class="note">! {{ n }}</div>{% endfor %}
+    {% for p in audio_plots %}
+    <div class="sig">
+      <div class="meta"><b>{{ p.name }}</b><br>median {{ '%.2f'|format(p.baseline.center) }} {{ p.baseline.unit }}<br>scale {{ '%.2f'|format(p.baseline.scale) }}{% if p.baseline.floor_applied %} (floored){% endif %}<br>n={{ p.baseline.n }}</div>
+      <div>{{ p.svg|safe }}</div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   <section class="panel">
     <h2>Events , ranked by magnitude (blinks listed in counts only)</h2>
     <table>

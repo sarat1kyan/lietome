@@ -65,6 +65,12 @@ def signal_unit(name: str) -> str:
         return "coefficient"
     if name.startswith("au."):
         return "probability"
+    if name == "voice.f0_hz":
+        return "hz"
+    if name == "voice.energy_db":
+        return "db"
+    if name.startswith("voice.") and name.endswith("_prob"):
+        return "probability"
     return "unitless"
 
 
