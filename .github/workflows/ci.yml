@@ -65,6 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks scans the full commit range
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
