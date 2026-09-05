@@ -54,6 +54,17 @@ frame features (pyin) 1.43 s, total audio stage ~1.5 s (0.09x real time) after t
 Command: `uv run lightman analyze samples/portrait_kenburns_20s.mp4 -o output/` (timings in
 `analysis.json -> timing_ms`).
 
+## Live mode (file replay at real-time pace, 640x480 @ 30 fps, M5 Pro CPU, 12 s)
+
+| Configuration | Analyzed fps | Latency p50 / p95 | Dropped | Inference p50 |
+|---|---|---|---|---|
+| landmarks + blendshapes | 30.0 | 7.3 / 8.6 ms | 0 / 361 | 7.2 ms |
+| + AU resnet18 | 29.9 | 19.3 / 20.7 ms | 0 / 361 | 19.2 ms |
+| + AU resnet50 | 14.4 | 121 / 137 ms | 186 / 362 | 68 ms |
+
+Latency = capture to end of analysis; the queue (size 2) keeps it bounded when the model is
+slower than the frame period, at the cost of dropped frames.
+
 ## Not yet measured
 
 CUDA/RTX 3060 Ti anything; end-to-end at 1080p/4K; memory footprint over long recordings;

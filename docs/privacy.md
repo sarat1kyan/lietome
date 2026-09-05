@@ -18,6 +18,15 @@ Lightman processes biometric behavioral data. Defaults are local-only and minima
 
 There is no telemetry, no crash reporting, no analytics.
 
+## Live mode
+
+`lightman live` prints a visible notice naming the camera, and the preview window is labelled
+"LIVE ANALYSIS". Frames are analyzed in memory and discarded; no video or audio is written.
+The session directory contains the same feature/event tables as prerecorded analysis (no
+thumbnails). Stop with q in the preview or Ctrl-C. Camera and microphone permissions are
+granted by the operating system to the terminal or app running Lightman; Lightman never
+bypasses them.
+
 ## Logging
 
 Structured logs record processing events (session created, frames decoded, model loaded,

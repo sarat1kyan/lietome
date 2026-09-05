@@ -52,6 +52,17 @@ Measured on Apple M5 Pro (CPU only): **3.5 ms/frame** landmarks + blendshapes, *
 AU detector (resnet50) or **17-20 ms** (resnet18). A 20 s 640x480 clip takes 3.4 s without AUs,
 58 s with the default AU model. See `docs/benchmarks.md`.
 
+### Live webcam
+
+```bash
+uv run lightman live                    # camera 0, preview window, landmarks + blendshapes
+uv run lightman live --au               # adds the fast AU model (resnet18), still 30 fps on M5 Pro CPU
+uv run lightman live --source clip.mp4  # replay a file at real-time pace (no camera needed)
+```
+
+Baseline is calibrated on the first 30 s; deviation and blink events print as they happen and
+a normal session directory is written when you press q. Frames are never saved.
+
 ## What it does not do (yet, or ever)
 
 * Audio covers voice activity, pitch, loudness, pauses; no transcription, no diarization,
@@ -62,6 +73,7 @@ AU detector (resnet50) or **17-20 ms** (resnet18). A 20 s 640x480 clip takes 3.4
   (MEGC 2025 spot-then-recognize scores ~ 0.006-0.009); see `docs/scientific-limitations.md`.
 * No deception score. See the same document for why.
 * Single face per video; multi-person tracking is on the roadmap.
+* Live mode is video-only so far (no microphone yet).
 
 ## Documentation
 

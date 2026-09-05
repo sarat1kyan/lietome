@@ -88,12 +88,13 @@ left?) are not yet verified on real footage** - see project-state. Until verifie
 <=20 deg off-axis, zero at >=60 deg. Deliberately simple and documented; to be replaced by measured
 blur/illumination/occlusion terms.
 
-## Live mode (design intent, not implemented)
+## Live mode (implemented for video, ADR-010)
 
-capture -> bounded queue (drop-oldest) -> inference worker(s) -> ring buffer of feature rows ->
-incremental baseline (same robust stats over a sliding/anchored window) -> same detectors on the
-buffer tail -> event stream (WebSocket). The detectors are pure functions on arrays so they can be
-re-run on a rolling window unchanged. The us time base lets audio and video events align.
+`live.sources` (webcam / real-time file replay) -> capture thread -> queue(2, drop oldest) ->
+main-thread analysis loop -> `live.streaming` (StreamingBaseline, StreamingDeviationDetector,
+StreamingBlinkDetector: the offline statistics with explicit state) -> sink (console, preview
+window) -> same session outputs at stop. Latency is bounded by (queue size + 1) x inference
+time. Live audio and a WebSocket event stream are next.
 
 ## Replaceable seams
 
