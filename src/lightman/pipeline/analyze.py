@@ -21,10 +21,11 @@ import numpy as np
 import numpy.typing as npt
 
 from lightman import __version__
+from lightman.audio.vad import SileroVAD
 from lightman.baseline import BaselineSnapshot, compute_leading_window_baseline
 from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
-from lightman.core.errors import UnsupportedMediaError
+from lightman.core.errors import LightmanError, UnsupportedMediaError
 from lightman.core.logging import get_logger
 from lightman.core.timebase import utc_now_iso
 from lightman.events import cluster_cooccurring, detect_blinks, detect_deviation_events
@@ -36,6 +37,7 @@ from lightman.features.quality import face_quality
 from lightman.features.table import SIGNAL_COLUMNS, FeatureTableBuilder
 from lightman.media import MediaLimits, iter_video_frames, probe_media, sha256_file
 from lightman.models import ModelRegistry
+from lightman.pipeline.audio_stage import AudioStageResult, run_audio_stage
 from lightman.schema import (
     AnalysisManifest,
     Event,
@@ -55,6 +57,7 @@ DISCLAIMER = (
 
 LandmarkerFactory = Callable[[LightmanConfig, ModelRegistry], FaceLandmarker]
 AUDetectorFactory = Callable[[LightmanConfig, ModelRegistry], AUDetector]
+VADFactory = Callable[[LightmanConfig, ModelRegistry], "SileroVAD"]
 
 
 @dataclass(slots=True)
@@ -65,6 +68,7 @@ class AnalysisResult:
     baseline: BaselineSnapshot
     events: list[Event]
     summary: dict[str, Any]
+    audio: AudioStageResult | None = None
 
 
 def default_landmarker_factory(cfg: LightmanConfig, registry: ModelRegistry) -> FaceLandmarker:
@@ -165,7 +169,7 @@ def _save_thumbnail(
             cv2.resize(crop, (int(crop.shape[1] * scale), int(crop.shape[0] * scale))),
             dtype=np.uint8,
         )
-    cv2.imwrite(str(dest), cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
+    cv2.imwrite(str(dest), cv2.cvtColor(crop, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 82])
 
 
 def analyze_video(
@@ -175,6 +179,7 @@ def analyze_video(
     *,
     landmarker_factory: LandmarkerFactory | None = None,
     au_factory: AUDetectorFactory | None = None,
+    vad_factory: VADFactory | None = None,
     registry: ModelRegistry | None = None,
     subject_id: str = "subject_001",
 ) -> AnalysisResult:
@@ -221,8 +226,11 @@ def analyze_video(
     infer_ms: list[float] = []
     au_ms: list[float] = []
     au_frames = 0
+    origin_us: int | None = None
     try:
         for fr in iter_video_frames(media_path, target_fps=cfg.video.target_fps, limits=cfg.limits):
+            if origin_us is None:
+                origin_us = fr.container_t_us - fr.t_us
             h, w = fr.rgb.shape[:2]
             ti = time.perf_counter()
             faces = landmarker.process(fr.rgb, fr.t_us)
@@ -342,6 +350,29 @@ def analyze_video(
     )
     timing["events_ms"] = (time.perf_counter() - t4) * 1000
 
+    # ---- audio
+    audio: AudioStageResult | None = None
+    if cfg.audio.enabled and media.has_audio:
+        ta = time.perf_counter()
+        try:
+            vad = vad_factory(cfg, registry) if vad_factory else None
+            audio = run_audio_stage(
+                media_path,
+                cfg=cfg,
+                registry=registry,
+                origin_us=origin_us or 0,
+                subject_id=subject_id,
+                event_id_start=len(events),
+                vad=vad,
+            )
+            events = sorted(
+                events + [e for e in audio.events if e.start_us >= warmup_us],
+                key=lambda e: (e.start_us, e.event_id),
+            )
+        except LightmanError as exc:
+            log.warning("audio_stage_failed", error=str(exc))
+        timing["audio_ms"] = (time.perf_counter() - ta) * 1000
+
     # ---- summary
     face_frames = int(cols["face_present"].sum())
     coverage = face_frames / n_frames if n_frames else 0.0
@@ -356,6 +387,10 @@ def analyze_video(
         notes.append(f"face visible in only {coverage:.0%} of frames")
     if any(cols["timestamp_estimated"]):
         notes.append("some frame timestamps were reconstructed from the nominal frame rate")
+    if audio is not None and audio.quality["speech_fraction"] < 0.05:
+        notes.append("little or no speech detected; audio baseline unreliable")
+    if cfg.audio.enabled and not media.has_audio:
+        notes.append("no audio stream; audio analysis skipped")
     quality_summary = QualitySummary(
         frames_total=n_frames,
         frames_decoded=n_frames,
@@ -374,6 +409,18 @@ def analyze_video(
         "face_coverage": coverage,
         "blink_count": blink_count,
         "blink_rate_per_min": (blink_count / (face_time_s / 60)) if face_time_s > 0 else None,
+        "audio": (
+            {
+                "speech_segments": len(audio.segments),
+                "speech_fraction": audio.quality["speech_fraction"],
+                "snr_db": audio.quality["snr_db"],
+                "clipping_fraction": audio.quality["clipping_fraction"],
+                "baseline_quality": audio.baseline.quality,
+                "timing_ms": audio.timing_ms,
+            }
+            if audio is not None
+            else None
+        ),
         "event_counts": {
             k: sum(1 for e in events if e.event_type == k)
             for k in sorted({e.event_type for e in events})
@@ -415,6 +462,17 @@ def analyze_video(
     _write_json(base_path, _nan_to_none(baseline.model_dump(mode="json")))
     outputs.append(_artifact(base_path, "json"))
 
+    if audio is not None:
+        af_path = session_dir / "audio_features.parquet"
+        audio.write_frame_table(af_path)
+        outputs.append(_artifact(af_path, "parquet"))
+        seg_path = session_dir / "speech_segments.json"
+        _write_json(seg_path, audio.segments_json())
+        outputs.append(_artifact(seg_path, "json"))
+        ab_path = session_dir / "audio_baseline.json"
+        _write_json(ab_path, _nan_to_none(audio.baseline.model_dump(mode="json")))
+        outputs.append(_artifact(ab_path, "json"))
+
     events_path = session_dir / "events.json"
     _write_json(
         events_path,
@@ -446,7 +504,7 @@ def analyze_video(
                     float(cols["face.bbox_x1"][i]),
                     float(cols["face.bbox_y1"][i]),
                 )
-            dest = tdir / f"{e.event_id}.png"
+            dest = tdir / f"{e.event_id}.jpg"
             _save_thumbnail(frames[pk], thumb_bbox, dest, cfg.storage.thumbnail_max_px)
             thumbs[e.event_id] = dest
     timing["outputs_ms"] = (time.perf_counter() - t5) * 1000
@@ -471,6 +529,7 @@ def analyze_video(
             thumbnails=thumbs,
             disclaimer=DISCLAIMER,
             signals_to_plot=cfg.events.signals,
+            audio=audio,
         )
         outputs.append(_artifact(report_path, "html"))
 
@@ -483,7 +542,9 @@ def analyze_video(
         media=media,
         config=cfg.snapshot(),
         environment=snapshot_environment(),
-        provenance=[prov] + ([au_detector.provenance] if au_detector is not None else []),
+        provenance=[prov]
+        + ([au_detector.provenance] if au_detector is not None else [])
+        + ([audio.provenance] if audio is not None else []),
         quality=quality_summary,
         outputs=outputs,
         timing_ms={k: round(v, 2) for k, v in timing.items()},
@@ -503,6 +564,7 @@ def analyze_video(
         baseline=baseline,
         events=events,
         summary=summary,
+        audio=audio,
     )
 
 

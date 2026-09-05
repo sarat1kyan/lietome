@@ -13,3 +13,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 006 | Baseline V0.1: robust median/MAD over a leading window | accepted |
 | 007 | Media decoding via PyAV, never shell FFmpeg | accepted |
 | 008 | Action Unit backend: OpenGraphAU via ONNX Runtime | accepted |
+| 009 | Audio stack: PyAV decode, Silero VAD (ONNX), librosa pyin | accepted |

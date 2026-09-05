@@ -17,6 +17,18 @@ stride = 1                   # run the AU model on every Nth analyzed frame
 prefer_gpu = true            # use CUDAExecutionProvider when onnxruntime-gpu is installed
 min_face_px = 48.0           # skip AU inference on faces narrower than this
 
+[audio]                      # Silero VAD (ONNX) + prosodic features (librosa pyin), 16 kHz mono
+enabled = true
+vad_threshold = 0.5
+min_speech_ms = 250
+min_silence_ms = 300
+f0_min_hz = 60.0
+f0_max_hz = 400.0
+long_pause_ms = 1500         # within-speech gap reported as a pause event
+voiced_prob_min = 0.5        # only voiced speech frames feed voice baselines/events
+min_event_ms = 250           # minimum voice deviation event duration
+signals = ["voice.f0_hz", "voice.energy_db"]   # audio signals that get baseline-deviation events
+
 [limits]                     # hostile-input guards, enforced before pixel memory is allocated
 max_file_bytes = 4294967296  # 4 GiB
 max_duration_us = 14400000000 # 4 h

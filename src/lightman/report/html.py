@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import math
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -18,6 +18,9 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from lightman.baseline.robust import BaselineSnapshot, robust_z
 from lightman.core.timebase import format_timecode
 from lightman.schema import Event, MediaInfo, QualitySummary
+
+if TYPE_CHECKING:
+    from lightman.pipeline.audio_stage import AudioStageResult
 
 _env = Environment(
     loader=PackageLoader("lightman.report", "templates"),
@@ -120,8 +123,9 @@ def _signal_svg(
     return "".join(parts)
 
 
-def _b64_png(path: Path) -> str:
-    return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+def _b64_image(path: Path) -> str:
+    mime = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+    return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
 
 
 def render_report(
@@ -137,6 +141,7 @@ def render_report(
     disclaimer: str,
     signals_to_plot: list[str],
     z_enter: float = 3.0,
+    audio: AudioStageResult | None = None,
 ) -> None:
     t_us = table["t_us"].astype(np.int64)
     plots = []
@@ -145,6 +150,22 @@ def render_report(
             svg = _signal_svg(name, t_us, table[name].astype(np.float64), baseline, events, z_enter)
             if svg:
                 plots.append({"name": name, "svg": svg, "baseline": baseline.signals[name]})
+    audio_plots = []
+    audio_segments: list[tuple[float, float]] = []
+    audio_quality: dict[str, float] | None = None
+    if audio is not None:
+        at = audio.frames.t_us.astype(np.int64)
+        for name in ("voice.f0_hz", "voice.energy_db"):
+            values = audio.frames.f0_hz if name == "voice.f0_hz" else audio.frames.energy_db
+            svg = _signal_svg(
+                name, at, np.asarray(values, dtype=np.float64), audio.baseline, events, z_enter
+            )
+            if svg:
+                audio_plots.append(
+                    {"name": name, "svg": svg, "baseline": audio.baseline.signals[name]}
+                )
+        audio_segments = [(s.start_us / 1e6, s.end_us / 1e6) for s in audio.segments]
+        audio_quality = audio.quality
     non_blink = [e for e in events if e.event_type != "blink"]
     ranked = sorted(non_blink, key=lambda e: e.severity, reverse=True)
     template = _env.get_template("report.html.j2")
@@ -156,7 +177,11 @@ def render_report(
         events=ranked,
         blink_count=summary.get("blink_count", 0),
         plots=plots,
-        thumbs={k: _b64_png(v) for k, v in thumbnails.items() if v.exists()},
+        thumbs={k: _b64_image(v) for k, v in thumbnails.items() if v.exists()},
         disclaimer=disclaimer,
+        audio_plots=audio_plots,
+        audio_segments=audio_segments,
+        audio_quality=audio_quality,
+        audio_baseline=audio.baseline if audio is not None else None,
     )
     dest.write_text(html, "utf-8")

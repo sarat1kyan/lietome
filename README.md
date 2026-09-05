@@ -31,6 +31,7 @@ version, and baseline that produced it:
 uv sync
 uv run lightman models download mediapipe/face_landmarker   # 3.7 MB, SHA-256 verified
 uv run lightman models download opengraphau/resnet50_s2     # 143 MB AU model (or resnet18_s2, 48 MB)
+uv run lightman models download silero/vad_v6               # 2.3 MB voice activity model
 uv run lightman analyze interview.mp4 -o output/
 ```
 
@@ -40,6 +41,7 @@ Produces `output/<session_id>/`:
 |---|---|
 | `metadata.json` | container/stream info, file hash (no absolute paths) |
 | `features.parquet` | per-frame table: us timestamps, head pose, eye aspect ratio, 52 blendshape coefficients, 41 Action Unit probabilities, quality |
+| `audio_features.parquet`, `speech_segments.json`, `audio_baseline.json` | 20 ms voice frames (F0, energy, voicing, speech probability), speech segments with pause/rate/pitch statistics, speaker baseline |
 | `baseline.json` | robust per-signal baseline (median, 1.4826,MAD, sample counts, reliability) |
 | `events.json` | blinks, per-signal baseline deviations, co-occurrence clusters - each with contributors, confidence, quality, provenance |
 | `analysis.json` | summary statistics and stage timings |
@@ -52,7 +54,8 @@ AU detector (resnet50) or **17-20 ms** (resnet18). A 20 s 640x480 clip takes 3.4
 
 ## What it does not do (yet, or ever)
 
-* No audio/speech analysis yet (Phase 5-6).
+* Audio covers voice activity, pitch, loudness, pauses; no transcription, no diarization,
+  no question/answer timing yet (Phase 6).
 * Action Units come from OpenGraphAU (occurrence probabilities, research-dataset training,
   not validated on our footage). Blendshape-derived AU hints stay labelled **"(proxy)"**.
 * No microexpression spotting. State of the art on public benchmarks is far from usable

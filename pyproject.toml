@@ -30,6 +30,7 @@ dependencies = [
   "platformdirs>=4.0",             # per-OS cache dir for model weights
   "httpx>=0.27",                   # model download with size limits + streaming
   "onnxruntime>=1.20",
+  "librosa>=0.11",
 ]
 
 [project.optional-dependencies]
@@ -92,7 +93,7 @@ ignore = [
   "TRY003",      # long exception messages are fine
   "S603", "S607",# subprocess use is reviewed manually; we never use shell=True
   "PLC0415",     # lazy imports of heavy/optional deps (mediapipe, cv2) are intentional
-  "PLR0912", "PLR0915", "PLR0917",  # orchestrators are long by nature; reviewed manually
+  "PLR0911", "PLR0912", "PLR0915", "PLR0917",  # orchestrators/dispatch tables are long by nature
   "TRY301",      # raising inside try blocks is fine when the except re-wraps
   "RUF001", "RUF002", "RUF003",  # sigma / minus signs in reports are intentional
 ]

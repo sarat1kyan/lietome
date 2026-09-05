@@ -47,6 +47,32 @@ class AUConfig(BaseModel):
     )
 
 
+class AudioConfig(BaseModel):
+    """Audio pipeline: Silero VAD + prosodic features (librosa pyin)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    vad_threshold: float = Field(default=0.5, ge=0, le=1)
+    min_speech_ms: int = Field(default=250, ge=0)
+    min_silence_ms: int = Field(default=300, ge=0)
+    f0_min_hz: float = Field(default=60.0, gt=0)
+    f0_max_hz: float = Field(default=400.0, gt=0)
+    long_pause_ms: int = Field(
+        default=1500, ge=0, description="Within-speech gap reported as a pause event"
+    )
+    voiced_prob_min: float = Field(
+        default=0.5,
+        ge=0,
+        le=1,
+        description="Frames below this pyin voicing probability are excluded from voice statistics",
+    )
+    min_event_ms: int = Field(
+        default=250, ge=0, description="Minimum duration of a voice deviation event"
+    )
+    signals: list[str] = Field(default_factory=lambda: ["voice.f0_hz", "voice.energy_db"])
+
+
 class BaselineConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -113,7 +139,7 @@ class StorageConfig(BaseModel):
 
     store_landmarks: bool = Field(default=False, description="Persist 478x3 landmarks per frame")
     write_report: bool = True
-    event_thumbnails: bool = Field(default=True, description="Small PNG crops at event peaks")
+    event_thumbnails: bool = Field(default=True, description="Small JPEG crops at event peaks")
     thumbnail_max_px: int = Field(default=256, ge=32, le=1024)
 
 
@@ -137,6 +163,7 @@ class LightmanConfig(BaseModel):
 
     video: VideoConfig = VideoConfig()
     au: AUConfig = AUConfig()
+    audio: AudioConfig = AudioConfig()
     limits: MediaLimits = MediaLimits()
     baseline: BaselineConfig = BaselineConfig()
     events: EventsConfig = EventsConfig()

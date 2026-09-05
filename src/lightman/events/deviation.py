@@ -33,6 +33,10 @@ def _label_for(signal: str, direction: str) -> str:
         return f"head {signal.split('.', 1)[1].replace('_deg', '')} {direction}"
     if signal.startswith("eye."):
         return f"eye openness {direction}"
+    if signal == "voice.f0_hz":
+        return f"voice pitch {direction}"
+    if signal == "voice.energy_db":
+        return f"voice loudness {direction}"
     return f"{signal} {direction}"
 
 
@@ -48,6 +52,7 @@ def detect_deviation_events(
     id_start: int = 0,
     exclude_intervals: list[tuple[int, int]] | None = None,
     exclude_signal_prefixes: tuple[str, ...] = ("eye.",),
+    source: str = "video",
 ) -> list[Event]:
     """One OBSERVATION-level event per sustained per-signal excursion.
 
@@ -90,7 +95,7 @@ def detect_deviation_events(
                 Event(
                     event_id=f"ev_{k:05d}",
                     subject_id=subject_id,
-                    source="video",
+                    source=source,
                     event_type="baseline_deviation",
                     level=EvidenceLevel.OBSERVATION,
                     start_us=start,

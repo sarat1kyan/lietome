@@ -20,6 +20,7 @@ core package or its default download manifest.
 | platformdirs | MIT | |
 | httpx | BSD-3 | |
 | onnxruntime | MIT | CPU by default; `lightman[cuda]` swaps in onnxruntime-gpu on Linux/Windows |
+| librosa 1.0 | ISC | F0 (pyin). Pulls numba (BSD-2), llvmlite (BSD-2), scikit-learn (BSD-3), scipy (BSD-3), soundfile (BSD-3), soxr (LGPL-2.1+, dynamically linked), pooch (BSD-3), msgpack (Apache-2.0), joblib (BSD-3), lazy_loader (BSD-3), decorator (BSD-2). First pyin call pays a ~25 s numba JIT on M5 Pro. |
 
 Dev tools (pytest MIT, hypothesis MPL-2.0, ruff MIT, mypy MIT, pre-commit MIT, pip-audit
 Apache-2.0) are not distributed.
@@ -40,9 +41,8 @@ Apache-2.0) are not distributed.
 | ETH-XGaze | CC BY-NC-SA 4.0 | same | **Rejected** for core. |
 | openSMILE | audEERING dual license, non-commercial for open version | - | **Rejected** for core. |
 | Whisper / faster-whisper / whisper.cpp | MIT | MIT | **Accepted for Phase 6** (ASR). |
-| Silero VAD | MIT | MIT | **Accepted for Phase 5**. |
+| Silero VAD v6.2.1 | MIT | MIT | **Accepted** (ADR-009). ONNX file pinned by tag and SHA-256; the `silero-vad` pip package is not used because it requires torch. |
 | pyannote.audio 3.x / community-1 | MIT | MIT (gated download on Hugging Face) | **Acceptable, opt-in** (requires user's HF token; never auto-download). |
-| librosa | ISC | - | Accepted for Phase 5. |
 | torchaudio / PyTorch | BSD-3 | - | Accepted when needed. |
 | praat-parselmouth | GPL-3.0-or-later | - | **Not in core** (GPL would bind the whole distribution). Possible optional extra with clear notice, or re-implement jitter/shimmer natively. |
 | ruptures | BSD-2 | - | Accepted for change-point detection (note: currently declares `<3.14`). |

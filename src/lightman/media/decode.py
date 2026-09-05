@@ -33,6 +33,8 @@ class DecodedFrame:
     """Index in the decoded stream before sampling."""
     t_us: int
     """Media time in microseconds, relative to the first decoded frame."""
+    container_t_us: int
+    """Absolute container time of this frame (for cross-modality alignment)."""
     rgb: npt.NDArray[np.uint8]
     """HxWx3 uint8, display-oriented (rotation applied)."""
     rotation_deg: int
@@ -128,6 +130,7 @@ def iter_video_frames(
                     index=yielded,
                     source_index=decoded - 1,
                     t_us=t_us,
+                    container_t_us=t_abs,
                     rgb=_rotate(rgb, rotation),
                     rotation_deg=rotation,
                     timestamp_estimated=estimated,
