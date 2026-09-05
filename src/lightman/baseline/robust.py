@@ -31,6 +31,7 @@ SCALE_FLOOR_BY_UNIT: dict[str, float] = {
     "deg": 0.5,
     "ratio": 0.005,
     "coefficient": 0.01,
+    "probability": 0.02,
     "model_units": 0.05,
     "unitless": 1e-3,
 }

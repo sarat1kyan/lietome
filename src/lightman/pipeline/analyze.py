@@ -28,6 +28,7 @@ from lightman.core.errors import UnsupportedMediaError
 from lightman.core.logging import get_logger
 from lightman.core.timebase import utc_now_iso
 from lightman.events import cluster_cooccurring, detect_blinks, detect_deviation_events
+from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
 from lightman.features.eyes import eye_aspect_ratios
 from lightman.features.head_pose import head_pose_from_matrix
@@ -53,6 +54,7 @@ DISCLAIMER = (
 )
 
 LandmarkerFactory = Callable[[LightmanConfig, ModelRegistry], FaceLandmarker]
+AUDetectorFactory = Callable[[LightmanConfig, ModelRegistry], AUDetector]
 
 
 @dataclass(slots=True)
@@ -77,6 +79,18 @@ def default_landmarker_factory(cfg: LightmanConfig, registry: ModelRegistry) -> 
         min_face_detection_confidence=cfg.video.min_face_detection_confidence,
         min_face_presence_confidence=cfg.video.min_face_presence_confidence,
         min_tracking_confidence=cfg.video.min_tracking_confidence,
+    )
+
+
+def default_au_factory(cfg: LightmanConfig, registry: ModelRegistry) -> AUDetector:
+    from lightman.face.opengraphau_onnx import OpenGraphAUOnnx
+
+    path = registry.ensure(cfg.au.model)
+    return OpenGraphAUOnnx(
+        path,
+        model_id=cfg.au.model,
+        model_sha256=registry.get(cfg.au.model).sha256,
+        prefer_gpu=cfg.au.prefer_gpu,
     )
 
 
@@ -160,6 +174,7 @@ def analyze_video(
     cfg: LightmanConfig | None = None,
     *,
     landmarker_factory: LandmarkerFactory | None = None,
+    au_factory: AUDetectorFactory | None = None,
     registry: ModelRegistry | None = None,
     subject_id: str = "subject_001",
 ) -> AnalysisResult:
@@ -195,12 +210,17 @@ def analyze_video(
     # ---- landmarker
     t1 = time.perf_counter()
     landmarker = factory(cfg, registry)
+    au_detector: AUDetector | None = None
+    if cfg.au.enabled:
+        au_detector = (au_factory or default_au_factory)(cfg, registry)
     timing["model_load_ms"] = (time.perf_counter() - t1) * 1000
 
     # ---- decode + features
     builder = FeatureTableBuilder()
     t2 = time.perf_counter()
     infer_ms: list[float] = []
+    au_ms: list[float] = []
+    au_frames = 0
     try:
         for fr in iter_video_frames(media_path, target_fps=cfg.video.target_fps, limits=cfg.limits):
             h, w = fr.rgb.shape[:2]
@@ -219,6 +239,18 @@ def analyze_video(
                     yaw, pitch = hp.yaw_deg, hp.pitch_deg
                 ear_r, ear_l = eye_aspect_ratios(face.landmarks, w, h)
                 ear_mean = float(np.nanmean([ear_r, ear_l]))
+                aus = None
+                if (
+                    au_detector is not None
+                    and fr.index % cfg.au.stride == 0
+                    and width_px >= cfg.au.min_face_px
+                ):
+                    ta = time.perf_counter()
+                    aus = au_detector.process(
+                        fr.rgb, (bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
+                    )
+                    au_ms.append((time.perf_counter() - ta) * 1000)
+                    au_frames += 1
                 builder.add_frame(
                     frame_index=fr.index,
                     source_index=fr.source_index,
@@ -231,6 +263,7 @@ def analyze_video(
                     head=head,
                     eyes=(ear_r, ear_l, ear_mean),
                     blendshapes=face.blendshapes,
+                    aus=aus,
                 )
             else:
                 builder.add_frame(
@@ -248,6 +281,8 @@ def analyze_video(
                 )
     finally:
         landmarker.close()
+        if au_detector is not None:
+            au_detector.close()
     timing["decode_and_landmarks_ms"] = (time.perf_counter() - t2) * 1000
     cols = builder.to_numpy()
     n_frames = len(builder)
@@ -256,6 +291,8 @@ def analyze_video(
         frames=n_frames,
         frames_with_face=int(cols["face_present"].sum()),
         mean_infer_ms=round(float(np.mean(infer_ms)), 2) if infer_ms else None,
+        au_frames=au_frames,
+        mean_au_ms=round(float(np.mean(au_ms)), 2) if au_ms else None,
     )
 
     # ---- baseline
@@ -345,6 +382,12 @@ def analyze_video(
             "mean": float(np.mean(infer_ms)) if infer_ms else None,
             "p50": float(np.percentile(infer_ms, 50)) if infer_ms else None,
             "p95": float(np.percentile(infer_ms, 95)) if infer_ms else None,
+        },
+        "au_inference_ms_per_frame": {
+            "frames": au_frames,
+            "mean": float(np.mean(au_ms)) if au_ms else None,
+            "p50": float(np.percentile(au_ms, 50)) if au_ms else None,
+            "p95": float(np.percentile(au_ms, 95)) if au_ms else None,
         },
         "signals": {
             name: {
@@ -440,7 +483,7 @@ def analyze_video(
         media=media,
         config=cfg.snapshot(),
         environment=snapshot_environment(),
-        provenance=[prov],
+        provenance=[prov] + ([au_detector.provenance] if au_detector is not None else []),
         quality=quality_summary,
         outputs=outputs,
         timing_ms={k: round(v, 2) for k, v in timing.items()},

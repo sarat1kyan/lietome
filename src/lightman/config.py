@@ -27,6 +27,26 @@ class VideoConfig(BaseModel):
     min_tracking_confidence: float = Field(default=0.5, ge=0, le=1)
 
 
+class AUConfig(BaseModel):
+    """Action Unit detector (OpenGraphAU via ONNX Runtime)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    model: str = Field(
+        default="opengraphau/resnet50_s2",
+        pattern="^opengraphau/(resnet50_s2|resnet18_s2)$",
+        description="resnet50_s2: better; resnet18_s2: ~4x faster",
+    )
+    stride: int = Field(
+        default=1, ge=1, description="Run the AU model on every Nth analyzed frame (1 = all)"
+    )
+    prefer_gpu: bool = True
+    min_face_px: float = Field(
+        default=48.0, ge=8, description="Skip AU inference when the face box is narrower"
+    )
+
+
 class BaselineConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -64,6 +84,23 @@ class EventsConfig(BaseModel):
             "blendshape.jawOpen",
             "blendshape.eyeSquintLeft",
             "blendshape.eyeSquintRight",
+            "au.AU1",
+            "au.AU2",
+            "au.AU4",
+            "au.AU5",
+            "au.AU6",
+            "au.AU7",
+            "au.AU9",
+            "au.AU10",
+            "au.AU12",
+            "au.AU14",
+            "au.AU15",
+            "au.AU17",
+            "au.AU20",
+            "au.AU23",
+            "au.AU24",
+            "au.AU25",
+            "au.AU26",
         ]
     )
     blink_ear_threshold: float = Field(default=0.21, gt=0, description="EAR closed threshold")
@@ -99,6 +136,7 @@ class LightmanConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     video: VideoConfig = VideoConfig()
+    au: AUConfig = AUConfig()
     limits: MediaLimits = MediaLimits()
     baseline: BaselineConfig = BaselineConfig()
     events: EventsConfig = EventsConfig()

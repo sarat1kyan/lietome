@@ -14,6 +14,7 @@ from lightman.events.segments import (
     merge_close_segments,
     segment_end_us,
 )
+from lightman.features.action_units import au_description
 from lightman.features.blendshapes import au_hint
 from lightman.schema.events import Event, EvidenceLevel, FeatureContribution
 
@@ -24,6 +25,10 @@ def _label_for(signal: str, direction: str) -> str:
         hint = au_hint(name)
         base = f"{name} {direction}"
         return f"{base} - {hint}" if hint else base
+    if signal.startswith("au."):
+        name = signal.split(".", 1)[1]
+        desc = au_description(name)
+        return f"{name} {desc} {direction}" if desc else f"{name} {direction}"
     if signal.startswith("head."):
         return f"head {signal.split('.', 1)[1].replace('_deg', '')} {direction}"
     if signal.startswith("eye."):

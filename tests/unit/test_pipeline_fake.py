@@ -12,6 +12,7 @@ import pytest
 from lightman import __version__
 from lightman.config import BaselineConfig, EventsConfig, LightmanConfig, ModelsConfig
 from lightman.face.base import FaceObservation
+from lightman.features.action_units import OPENGRAPHAU_NAMES
 from lightman.features.blendshapes import BLENDSHAPE_NAMES
 from lightman.features.eyes import LEFT_EYE_EAR, RIGHT_EYE_EAR
 from lightman.features.head_pose import rotation_matrix
@@ -72,6 +73,39 @@ class FakeLandmarker:
         self.closed = True
 
 
+class FakeAUDetector:
+    """AU4 (brow lowerer) high on frames 60-70, matching the blendshape spike."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.closed = False
+
+    @property
+    def provenance(self) -> Provenance:
+        return Provenance(
+            extractor_id="au.fake",
+            extractor_version="0",
+            runtime="test",
+            lightman_version=__version__,
+        )
+
+    @property
+    def au_names(self) -> list[str]:
+        return list(OPENGRAPHAU_NAMES)
+
+    def process(self, rgb: np.ndarray, bbox_px: tuple[float, float, float, float]) -> np.ndarray:
+        i = self.calls
+        self.calls += 1
+        rng = np.random.default_rng(1000 + i)
+        p = np.clip(rng.normal(0.1, 0.01, 41), 0, 1).astype(np.float32)
+        if 60 <= i + 5 < 70:  # detector is only called on frames with a face (5 frames lost)
+            p[OPENGRAPHAU_NAMES.index("AU4")] = 0.9
+        return p
+
+    def close(self) -> None:
+        self.closed = True
+
+
 @pytest.fixture
 def cfg() -> LightmanConfig:
     return LightmanConfig(
@@ -84,8 +118,16 @@ def cfg() -> LightmanConfig:
 def test_pipeline_end_to_end_with_fake_backend(tmp_path: Path, cfg: LightmanConfig) -> None:
     video = write_video(tmp_path / "v.mp4", noise_frames(90, w=160, h=120), fps=30)
     fake = FakeLandmarker()
-    result = analyze_video(video, tmp_path / "out", cfg, landmarker_factory=lambda _c, _r: fake)
+    fake_au = FakeAUDetector()
+    result = analyze_video(
+        video,
+        tmp_path / "out",
+        cfg,
+        landmarker_factory=lambda _c, _r: fake,
+        au_factory=lambda _c, _r: fake_au,
+    )
     assert fake.closed and fake.calls == 90
+    assert fake_au.closed and fake_au.calls == 85  # only frames with a face
     d = result.session_dir
     for name in (
         "metadata.json",
@@ -101,7 +143,7 @@ def test_pipeline_end_to_end_with_fake_backend(tmp_path: Path, cfg: LightmanConf
     manifest = AnalysisManifest.model_validate_json((d / "manifest.json").read_text())
     assert manifest.quality.frames_decoded == 90
     assert manifest.quality.frames_with_face == 85
-    assert manifest.provenance[0].extractor_id == "face.fake"
+    assert [p.extractor_id for p in manifest.provenance] == ["face.fake", "au.fake"]
     assert "not" in manifest.disclaimer.lower() and "lie" in manifest.disclaimer.lower()
     # every artifact hash in the manifest matches the file on disk
     from lightman.media import sha256_file
@@ -112,6 +154,8 @@ def test_pipeline_end_to_end_with_fake_backend(tmp_path: Path, cfg: LightmanConf
     table = pq.read_table(d / "features.parquet")
     assert table.num_rows == 90
     assert "blendshape.browDownLeft" in table.column_names
+    assert "au.AU4" in table.column_names
+    assert np.isnan(table.column("au.AU4").to_numpy()[22])  # no face -> NaN
     assert not table.column("face_present").to_numpy()[22]
 
     events = json.loads((d / "events.json").read_text())["events"]
@@ -147,6 +191,7 @@ def test_pipeline_no_face_at_all(tmp_path: Path, cfg: LightmanConfig) -> None:
             return []
 
     video = write_video(tmp_path / "v.mp4", noise_frames(30, w=160, h=120), fps=30)
+    cfg = cfg.model_copy(update={"au": cfg.au.model_copy(update={"enabled": False})})
     result = analyze_video(video, tmp_path / "out", cfg, landmarker_factory=lambda _c, _r: NoFace())
     assert result.manifest.quality.face_coverage == 0.0
     assert result.events == []
