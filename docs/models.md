@@ -32,9 +32,32 @@ access; use `lightman models import <id> <file>` for air-gapped installs.
   (`DrishtiMetalHelper`, "Service is unavailable") for every configuration tested. 1.0.0 and
   0.10.35 work. Pinned `!=1.0.1`.
 
+### opengraphau/resnet50_s2 and opengraphau/resnet18_s2
+
+* OpenGraphAU (Luo et al., IJCAI 2022; github.com/lingjivoo/OpenGraphAU) stage-2 MEFL models:
+  ResNet backbone -> 27 per-AU linear blocks -> edge-feature GNN -> 41 sigmoid outputs
+  (27 AUs + left/right variants of AU1, 2, 4, 6, 10, 12, 14).
+* Converted to ONNX (opset 17) with `experiments/export_opengraphau_onnx.py`; checkpoint loaded
+  with `weights_only=True`; ONNX output matches PyTorch to <1e-6. Hosted as release assets on
+  this repository (`models-v1`) with NOTICE and upstream LICENSE; SHA-256 pinned in the
+  manifest. Original checkpoint hashes are recorded in the manifest notes.
+* Preprocessing (from upstream `image_eval`): square crop, margin 1.3 around the landmark box,
+  resize to 256, center crop 224, ImageNet normalization. Margin sweep 1.0-1.6 changed mean
+  probability by <0.06 on the fixture; 2.0 by 0.10.
+* Measured on Apple M5 Pro, onnxruntime 1.29 CPU: resnet50 67 ms/frame isolated, ~88 ms
+  inside the pipeline (shares cores with decode and MediaPipe); resnet18 17 ms isolated,
+  ~20 ms in pipeline. CoreML EP is slower than CPU (partial partitioning); torch MPS was
+  29 ms / 11 ms but torch is not a Lightman dependency. CUDA not yet measured.
+* Quality note: on the smiling fixture resnet50 gives AU6 0.92, AU7 0.95, AU10 0.95, AU12 0.96,
+  AU25 0.98 (a Duchenne smile with parted lips); resnet18 hedges near 0.5 on the same AUs.
+  Default is resnet50; resnet18 is for live/low-power use.
+* Upstream demo.py imports the stage-1 (ANFL) class for every checkpoint; stage-2 weights only
+  load cleanly into `model.MEFL.MEFARG` (strict load verified). Documented so nobody repeats it.
+* Not a facial-expression or emotion classifier. Outputs are occurrence probabilities, not
+  FACS intensities (A-E).
+
 ## Planned
 
-* An AU detector behind a new `AUDetector` interface (OpenGraphAU or a Py-Feat model), exported to
-  ONNX where possible so one runtime (onnxruntime with CPU/CUDA/CoreML providers) serves all
-  machines. Adoption requires: license row, hash pin, and a measured comparison against
-  blendshape proxies on FACS-coded data we are licensed to use.
+* AU intensity (not just occurrence) and a measured comparison of OpenGraphAU vs blendshape
+  proxies on FACS-coded data we are licensed to use.
+* fp16 / int8 quantization of the ONNX exports (143 MB and 48 MB today).

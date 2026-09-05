@@ -30,6 +30,7 @@ version, and baseline that produced it:
 ```bash
 uv sync
 uv run lightman models download mediapipe/face_landmarker   # 3.7 MB, SHA-256 verified
+uv run lightman models download opengraphau/resnet50_s2     # 143 MB AU model (or resnet18_s2, 48 MB)
 uv run lightman analyze interview.mp4 -o output/
 ```
 
@@ -38,21 +39,22 @@ Produces `output/<session_id>/`:
 | File | Content |
 |---|---|
 | `metadata.json` | container/stream info, file hash (no absolute paths) |
-| `features.parquet` | per-frame table: us timestamps, head pose, eye aspect ratio, 52 blendshape coefficients, quality |
+| `features.parquet` | per-frame table: us timestamps, head pose, eye aspect ratio, 52 blendshape coefficients, 41 Action Unit probabilities, quality |
 | `baseline.json` | robust per-signal baseline (median, 1.4826,MAD, sample counts, reliability) |
 | `events.json` | blinks, per-signal baseline deviations, co-occurrence clusters - each with contributors, confidence, quality, provenance |
 | `analysis.json` | summary statistics and stage timings |
 | `report.html` | self-contained inspection report: timelines in SD units, ranked events, thumbnails |
 | `manifest.json` | versions, model hashes, environment, config snapshot, output hashes |
 
-Measured on Apple M5 Pro (CPU only, MediaPipe 1.0.0): **3.5 ms/frame** landmarks +
-blendshapes; a 20 s 640x480 clip analyzes end-to-end in **3.4 s**. See `docs/benchmarks.md`.
+Measured on Apple M5 Pro (CPU only): **3.5 ms/frame** landmarks + blendshapes, **67-88 ms/frame**
+AU detector (resnet50) or **17-20 ms** (resnet18). A 20 s 640x480 clip takes 3.4 s without AUs,
+58 s with the default AU model. See `docs/benchmarks.md`.
 
 ## What it does not do (yet, or ever)
 
 * No audio/speech analysis yet (Phase 5-6).
-* No FACS Action Unit detector yet. Blendshapes are animation coefficients; Lightman labels
-  their AU correspondences as **"(proxy)"** because they are semantic, not validated.
+* Action Units come from OpenGraphAU (occurrence probabilities, research-dataset training,
+  not validated on our footage). Blendshape-derived AU hints stay labelled **"(proxy)"**.
 * No microexpression spotting. State of the art on public benchmarks is far from usable
   (MEGC 2025 spot-then-recognize scores ~ 0.006-0.009); see `docs/scientific-limitations.md`.
 * No deception score. See the same document for why.

@@ -25,6 +25,7 @@ verified empirically on the development machine (Apple M5 Pro, macOS 27, Python 
 | InsightFace | Code MIT, all model packs non-commercial. Rejected for core. |
 | RetinaFace (MIT re-implementations) | Fine as detector if needed; WIDER FACE training-data caveat. Not needed while MediaPipe's BlazeFace suffices. |
 | Gaze: L2CS-Net (MIT code, weights unspecified), ETH-XGaze (CC BY-NC-SA) | Hold / reject. V0.1 uses iris-related blendshapes (`eyeLook*`) as gaze proxies only. |
+| Blendshape vs AU on the fixture | MediaPipe `browDownLeft/Right` = 0.84/0.82 on a broad smile while OpenGraphAU AU4 = 0.35; `eyeSquint` 0.74 vs AU7 0.95; `mouthSmile` 0.96 vs AU12 0.96. Proxies agree on the smile, disagree on the brow. One image, but it shows why proxies stay labelled. |
 | Blendshape<->AU validity | Only mapping found (Blendshape features meet action units, 2026) is expert-consensus, not empirically validated. Hence "(proxy)". |
 
 ## Microexpressions

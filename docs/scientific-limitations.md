@@ -21,6 +21,11 @@ them separate in the data model, the report, and the language.
   `features/blendshapes.py` come from semantic definitions; the only published mapping we found
   (Blendshape features meet action units, 2026) was itself built by expert consensus without
   empirical validation. Hence "(proxy)".
+* **Action Units (OpenGraphAU)**: occurrence probabilities from a classifier trained on six
+  research datasets (posed + spontaneous, lab + in-the-wild). Upstream hybrid-set F1 is low
+  (~23, 41 classes, heavy imbalance); per-dataset F1 in the source paper is ~65 on BP4D.
+  Probabilities are not FACS intensities. Not validated on this project's footage or
+  demographics. Left/right variants are the least reliable outputs.
 * **Head pose**: Euler angles from MediaPipe's canonical-face transform. Fine for *changes*;
   absolute accuracy and sign conventions are unverified.
 * **Eye aspect ratio**: purely geometric, well-understood (Soukupova & Cech 2016). Blink

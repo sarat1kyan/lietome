@@ -11,7 +11,8 @@ RGB frame + t_us
   |  lightman.face             FaceLandmarker Protocol -> FaceObservation (landmarks, blendshapes, 4x4)
   v
 FaceObservation
-  |  lightman.features         head pose (Euler from 4x4), EAR, blendshape columns, quality -> Arrow row
+  |  lightman.face.au_base     AUDetector -> 41 AU probabilities from the face crop (OpenGraphAU ONNX)
+  |  lightman.features         head pose (Euler from 4x4), EAR, blendshape + AU columns, quality -> Arrow row
   v
 FeatureTable (one row per analyzed frame, NaN where no face)
   |  lightman.baseline         per-signal median / 1.4826,MAD over a quality-gated leading window
@@ -99,7 +100,7 @@ re-run on a rolling window unchanged. The us time base lets audio and video even
 | Seam | Interface | Today |
 |---|---|---|
 | Face landmarks | `face.base.FaceLandmarker` | MediaPipe Face Landmarker |
-| AU detection | (planned `face.base.AUDetector`) | - |
+| AU detection | `face.au_base.AUDetector` | OpenGraphAU ONNX (resnet50 / resnet18) |
 | Model assets | `models/manifest.json` + `ModelRegistry` | 1 entry |
 | Event detectors | pure functions in `events/` | blinks, deviations, clusters |
 | Baseline | `baseline.compute_leading_window_baseline` | leading window |
