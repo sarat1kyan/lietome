@@ -1,0 +1,57 @@
+# Lightman configuration. Every key is optional; these are the defaults.
+# Load with: lightman analyze video.mp4 --config configs/default.toml
+
+log_level = "INFO"
+
+[video]
+# target_fps = 15.0          # time-based subsampling; omit to analyze every frame
+max_faces = 1                # V0.1 analyzes the first detected face only
+min_face_detection_confidence = 0.5
+min_face_presence_confidence = 0.5
+min_tracking_confidence = 0.5
+
+[limits]                     # hostile-input guards, enforced before pixel memory is allocated
+max_file_bytes = 4294967296  # 4 GiB
+max_duration_us = 14400000000 # 4 h
+max_pixels_per_frame = 8294400 # 3840x2160
+max_frames = 2000000
+
+[baseline]
+mode = "leading_window"      # only mode in V0.1
+window_s = 30.0              # calibration window at the start of the recording
+min_quality = 0.5            # frames below this quality are excluded from the baseline
+min_samples = 60             # fewer usable frames -> "unreliable" note
+good_samples = 600           # sample-size term saturates here
+
+[events]
+z_enter = 3.0                # |robust z| to open a deviation event
+z_exit = 2.0                 # hysteresis close threshold
+min_duration_ms = 120
+merge_gap_ms = 200
+min_frame_quality = 0.4
+warmup_ms = 300              # trackers need a few frames to settle; events before this are dropped
+blink_ear_threshold = 0.21   # absolute fallback; relative (70% of baseline EAR) is used when available
+blink_min_ms = 50
+blink_max_ms = 500
+signals = [
+  "head.yaw_deg", "head.pitch_deg", "head.roll_deg",
+  "eye.aspect_ratio_mean",
+  "blendshape.browDownLeft", "blendshape.browDownRight", "blendshape.browInnerUp",
+  "blendshape.mouthPressLeft", "blendshape.mouthPressRight", "blendshape.jawOpen",
+  "blendshape.eyeSquintLeft", "blendshape.eyeSquintRight",
+]
+
+[storage]
+store_landmarks = false      # 478x3 per frame is large and biometric; off by default
+write_report = true
+event_thumbnails = true
+thumbnail_max_px = 256
+
+[privacy]
+anonymous_subject_ids = true
+retain_media_copy = false    # Lightman never copies the input media
+persist_source_path = false  # only the file name and SHA-256 are stored
+
+[models]
+# cache_dir = "/path/to/models"   # or set LIGHTMAN_MODEL_DIR
+allow_download = true        # set false for air-gapped use; import with `lightman models import`

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lightman session {{ summary.session_id }}</title>
+<style>
+:root{--bg:#0f1114;--panel:#161a1f;--panel2:#1c2127;--fg:#d7dbe0;--muted:#8b949e;--grid:#242a31;
+ --line:#9ecbff;--accent:#e0b04a;--warn:#e26d5c;--ok:#5fb37a;--basewin:rgba(158,203,255,.06)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+header{padding:20px 28px;border-bottom:1px solid var(--grid);display:flex;justify-content:space-between;align-items:baseline;gap:20px;flex-wrap:wrap}
+h1{font-size:16px;letter-spacing:.12em;text-transform:uppercase;margin:0;color:var(--fg)}
+h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+main{padding:20px 28px;display:grid;gap:22px}
+.panel{background:var(--panel);border:1px solid var(--grid);border-radius:4px;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0}
+.disclaimer{border-left:3px solid var(--accent);padding:10px 14px;color:var(--fg);background:var(--panel2);font-size:13px}
+.note{color:var(--accent)}
+svg.signal{width:100%;height:auto;display:block}
+.plotbg{fill:var(--panel2)}
+.basewin{fill:var(--basewin)}
+line.zero{stroke:var(--muted);stroke-width:1}
+line.thr{stroke:var(--accent);stroke-width:.8;stroke-dasharray:4 4;opacity:.7}
+.ax{fill:var(--muted);font-size:10px}
+rect.ev{fill:var(--warn);opacity:.28}
+rect.ev.multi_signal_deviation{fill:var(--accent)}
+rect.ev.eye_closure{fill:var(--line)}
+.sig{display:grid;grid-template-columns:260px 1fr;gap:12px;align-items:start;padding:10px 0;border-top:1px solid var(--grid)}
+.sig .meta{color:var(--muted);font-size:12px}
+.sig .meta b{color:var(--fg)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--grid);vertical-align:top}
+th{color:var(--muted);font-weight:normal;letter-spacing:.08em;text-transform:uppercase;font-size:11px}
+.lvl{display:inline-block;padding:1px 6px;border:1px solid var(--grid);border-radius:3px;font-size:11px;color:var(--muted)}
+.lvl.interpretation{border-color:var(--accent);color:var(--accent)}
+.sev{color:var(--warn)}
+.thumb{width:96px;height:96px;object-fit:cover;border:1px solid var(--grid);border-radius:3px;background:#000}
+.bar{height:6px;background:var(--grid);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok)}
+small{color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Lightman , behavioral analysis session</h1>
+  <div><small>session</small> {{ summary.session_id }} &nbsp; <small>subject</small> {{ summary.subject_id }}</div>
+</header>
+<main>
+  <div class="disclaimer">{{ disclaimer }}</div>
+
+  <section class="panel grid">
+    <div>
+      <h2>Media</h2>
+      <dl class="kv">
+        <dt>file</dt><dd>{{ media.path_name }}</dd>
+        <dt>container</dt><dd>{{ media.container_format }}</dd>
+        {% set v = media.video_streams[0] %}
+        <dt>video</dt><dd>{{ v.codec }} {{ v.width }}x{{ v.height }}{% if v.rotation_deg %} rot {{ v.rotation_deg }} deg{% endif %} @ {{ '%.2f'|format(v.average_fps or 0) }} fps</dd>
+        <dt>audio</dt><dd>{% if media.audio_streams %}{{ media.audio_streams[0].codec }} {{ media.audio_streams[0].sample_rate }} Hz x{{ media.audio_streams[0].channels }}{% else %}none{% endif %}</dd>
+        <dt>duration</dt><dd>{{ (summary.duration_us)|tc }}</dd>
+        <dt>sha256</dt><dd><small>{{ media.sha256[:16] }}...</small></dd>
+      </dl>
+    </div>
+    <div>
+      <h2>Signal quality</h2>
+      <dl class="kv">
+        <dt>frames analyzed</dt><dd>{{ quality.frames_decoded }}</dd>
+        <dt>face coverage</dt><dd>{{ '%.1f'|format(quality.face_coverage*100) }}% <div class="bar"><i style="width:{{ quality.face_coverage*100 }}%"></i></div></dd>
+        <dt>mean face quality</dt><dd>{% if quality.mean_face_quality is not none %}{{ '%.2f'|format(quality.mean_face_quality) }}{% else %}n/a{% endif %}</dd>
+        <dt>baseline quality</dt><dd>{{ '%.2f'|format(quality.baseline_quality) }} <div class="bar"><i style="width:{{ quality.baseline_quality*100 }}%"></i></div></dd>
+        <dt>baseline window</dt><dd>{{ baseline.window_start_us|tc }} - {{ baseline.window_end_us|tc }} ({{ baseline.frames_used }} / {{ baseline.frames_in_window }} frames used)</dd>
+        <dt>inference</dt><dd>{% if summary.inference_ms_per_frame.p50 %}{{ '%.1f'|format(summary.inference_ms_per_frame.p50) }} ms/frame p50, {{ '%.1f'|format(summary.inference_ms_per_frame.p95) }} ms p95{% else %}n/a{% endif %}</dd>
+      </dl>
+      {% for n in quality.notes %}<div class="note">! {{ n }}</div>{% endfor %}
+    </div>
+    <div>
+      <h2>Counts</h2>
+      <dl class="kv">
+        <dt>blinks</dt><dd>{{ blink_count }}{% if summary.blink_rate_per_min %} ({{ '%.1f'|format(summary.blink_rate_per_min) }} / min){% endif %}</dd>
+        {% for k, c in summary.event_counts.items() %}<dt>{{ k }}</dt><dd>{{ c }}</dd>{% endfor %}
+      </dl>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Timeline , robust deviation from baseline (SD = 1.4826,MAD)</h2>
+    <small>Shaded left region = baseline window. Dashed lines = event threshold. Highlighted spans = events on this signal.</small>
+    {% for p in plots %}
+    <div class="sig">
+      <div class="meta"><b>{{ p.name }}</b><br>median {{ '%.3f'|format(p.baseline.center) }} {{ p.baseline.unit }}<br>scale {{ '%.3f'|format(p.baseline.scale) }}{% if p.baseline.floor_applied %} (floored){% endif %}<br>n={{ p.baseline.n }}</div>
+      <div>{{ p.svg|safe }}</div>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="panel">
+    <h2>Events , ranked by magnitude (blinks listed in counts only)</h2>
+    <table>
+      <thead><tr><th></th><th>time</th><th>level</th><th>label</th><th>contributors</th><th>SD</th><th>conf / quality</th></tr></thead>
+      <tbody>
+      {% for e in events %}
+      <tr>
+        <td>{% if e.event_id in thumbs %}<img class="thumb" src="{{ thumbs[e.event_id] }}" alt="">{% endif %}</td>
+        <td>{{ e.start_us|tc }}<br><small>{{ ((e.end_us - e.start_us)/1000)|round|int }} ms</small></td>
+        <td><span class="lvl {{ e.level.value }}">{{ e.level.value }}</span></td>
+        <td>{{ e.label }}<br><small>{{ e.description }}</small></td>
+        <td>{% for c in e.contributions[:6] %}<div>{{ c.feature }} <small>{{ '%+.1f'|format(c.peak_deviation) }}SD , peak {{ '%.3f'|format(c.peak_value) }} vs {{ '%.3f'|format(c.baseline_center) }} {{ c.unit }}</small></div>{% endfor %}</td>
+        <td class="sev">{{ '%.1f'|format(e.severity) }}</td>
+        <td>{{ '%.2f'|format(e.confidence) }} / {{ '%.2f'|format(e.quality) }}<br><small>baseline {{ '%.2f'|format(e.baseline_quality) }}</small></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7"><small>No deviation events above threshold.</small></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  <footer><small>Generated by Lightman. Blendshape names are motion coefficients; "(proxy)" AU hints are semantic and unvalidated. All findings are observations or interpretations of measured motion, never conclusions about truthfulness.</small></footer>
+</main>
+</body>
+</html>

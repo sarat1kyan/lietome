@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "models": {
+    "mediapipe/face_landmarker": {
+      "filename": "face_landmarker.task",
+      "url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "size_bytes": 3758596,
+      "task": "face detection + 478 3D landmarks + 52 blendshape coefficients + facial transform",
+      "runtime": "mediapipe",
+      "license": "Apache-2.0",
+      "source": "https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker",
+      "input": "RGB image; internal face detector 192x192, mesh 256x256, float16",
+      "output": "normalized landmarks (478,3); blendshapes (52); 4x4 transform matrix",
+      "notes": "Bundle of BlazeFace (short-range), FaceMesh-V2, Blendshape-V2. Blendshapes are ARKit-style motion coefficients, NOT FACS Action Units."
+    }
+  }
+}
