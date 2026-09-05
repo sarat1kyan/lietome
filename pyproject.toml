@@ -29,10 +29,12 @@ dependencies = [
   "jinja2>=3.1",                   # HTML report templating
   "platformdirs>=4.0",             # per-OS cache dir for model weights
   "httpx>=0.27",                   # model download with size limits + streaming
+  "onnxruntime>=1.20",
 ]
 
 [project.optional-dependencies]
-# Future phases add opt-in extras here (audio, asr, torch...). Only declare what is used.
+# Opt-in extras. Only declare what is used.
+cuda = ["onnxruntime-gpu>=1.20; sys_platform != 'darwin'"]  # NVIDIA machines; replaces CPU onnxruntime
 
 [dependency-groups]
 dev = [
@@ -112,7 +114,7 @@ files = ["src/lightman"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["mediapipe.*", "av.*", "cv2.*", "pyarrow.*"]
+module = ["mediapipe.*", "av.*", "cv2.*", "pyarrow.*", "onnxruntime.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest
