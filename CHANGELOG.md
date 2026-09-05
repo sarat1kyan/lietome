@@ -21,5 +21,8 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
   voice deviation and pause events, `audio_features.parquet`, `speech_segments.json`,
   report section.
 - Dockerfile and CI image build.
+- Web UI: `lightman serve` (FastAPI, localhost) + Svelte 5 workstation (session rail, video
+  stage with local playback, canvas timeline in robust-SD units, evidence panel, quality
+  strip); upload-and-analyze endpoint; single-file demo build.
 - `lightman live`: webcam or real-time file replay, bounded drop-oldest queue, streaming
   baseline/detectors, console and preview sinks, same session outputs.

@@ -37,6 +37,21 @@ datasets/             adapters + manifests only; data stays out of Git
 samples/, output/     gitignored working dirs
 ```
 
+## Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev        # Vite dev server on :5173, proxies /api to lightman serve on :8710
+npm run check      # svelte-check
+npm run build      # -> src/lightman/api/static (gitignored; CI/Docker build it)
+npm run build:demo # single HTML with frontend/demo-data.json inlined (experiments/build_demo_bundle.py)
+```
+
+Design tokens live in `frontend/src/styles.css`; components in `frontend/src/components`.
+The timeline is a canvas (no chart library). Keep the visual language: amber only for evidence,
+blue for eyes/head, teal for voice; numbers in JetBrains Mono.
+
 ## Adding a face backend
 
 Implement `lightman.face.base.FaceLandmarker` (`provenance`, `blendshape_names`, `process`,

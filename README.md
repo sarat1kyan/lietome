@@ -52,6 +52,18 @@ Measured on Apple M5 Pro (CPU only): **3.5 ms/frame** landmarks + blendshapes, *
 AU detector (resnet50) or **17-20 ms** (resnet18). A 20 s 640x480 clip takes 3.4 s without AUs,
 58 s with the default AU model. See `docs/benchmarks.md`.
 
+### Web UI
+
+```bash
+cd frontend && npm install && npm run build && cd ..   # once; CI and Docker do this too
+uv run lightman serve -o output/                       # http://127.0.0.1:8710
+```
+
+Session rail, video stage (attach the original file for local playback; it never leaves your
+browser), timeline lanes in robust-SD units with an event strip, and an evidence panel with
+contributors and confidence. `npm run build:demo` produces a single HTML file with one session
+inlined for sharing a look without a server.
+
 ### Live webcam
 
 ```bash

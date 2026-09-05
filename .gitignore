@@ -53,6 +53,12 @@ recordings/
 # Small licensed test fixtures are allowed explicitly:
 !tests/fixtures/**
 
+# --- Built frontend (npm run build writes here; CI/Docker build it) ---
+src/lightman/api/static/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-demo/
+
 # --- Analysis outputs ---
 output/
 runs/
@@ -67,3 +73,4 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+frontend/demo-data.json

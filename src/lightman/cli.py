@@ -195,6 +195,33 @@ def live(
 
 
 @app.command()
+def serve(
+    out: Annotated[Path, typer.Option("--out", "-o", help="Session root to serve")] = Path(
+        "output"
+    ),
+    host: Annotated[
+        str, typer.Option(help="Bind address; keep 127.0.0.1 unless you know why")
+    ] = "127.0.0.1",
+    port: Annotated[int, typer.Option()] = 8710,
+    config: Annotated[
+        Path | None, typer.Option("--config", "-c", exists=True, dir_okay=False)
+    ] = None,
+) -> None:
+    """Serve the web UI and API for a session root (local by default)."""
+    import uvicorn
+
+    from lightman.api.app import create_app
+
+    try:
+        cfg = LightmanConfig.load(config)
+    except LightmanError as exc:
+        _fail(exc)
+        return
+    typer.echo(f"Lightman UI: http://{host}:{port}/  (API docs: /api/docs)")
+    uvicorn.run(create_app(out, cfg), host=host, port=port, log_level="warning")
+
+
+@app.command()
 def doctor() -> None:
     """Inspect the runtime environment (OS, CPU, accelerators, key package versions)."""
     from lightman.core.env import snapshot_environment
