@@ -18,6 +18,14 @@ Lightman processes biometric behavioral data. Defaults are local-only and minima
 
 There is no telemetry, no crash reporting, no analytics.
 
+## Web UI
+
+`lightman serve` binds to 127.0.0.1 by default and has no authentication; do not expose it.
+The video stage plays a file you attach from disk through the browser's object URL; the file
+is not uploaded. `POST /api/analyze` stores the uploaded file only for the duration of the
+analysis unless `keep_media` is requested, in which case it is kept as `media.mp4` in the
+session directory so the UI can stream it.
+
 ## Live mode
 
 `lightman live` prints a visible notice naming the camera, and the preview window is labelled

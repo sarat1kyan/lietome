@@ -20,6 +20,10 @@ core package or its default download manifest.
 | platformdirs | MIT | |
 | httpx | BSD-3 | |
 | onnxruntime | MIT | CPU by default; `lightman[cuda]` swaps in onnxruntime-gpu on Linux/Windows |
+| fastapi | MIT | localhost API for the UI |
+| uvicorn | BSD-3 | |
+| python-multipart | Apache-2.0 | upload parsing |
+| svelte 5, vite 8, @sveltejs/vite-plugin-svelte, svelte-check, typescript, vite-plugin-singlefile (frontend build only) | MIT (typescript: Apache-2.0) | not shipped as Python deps; build output is static files |
 | librosa 1.0 | ISC | F0 (pyin). Pulls numba (BSD-2), llvmlite (BSD-2), scikit-learn (BSD-3), scipy (BSD-3), soundfile (BSD-3), soxr (LGPL-2.1+, dynamically linked), pooch (BSD-3), msgpack (Apache-2.0), joblib (BSD-3), lazy_loader (BSD-3), decorator (BSD-2). First pyin call pays a ~25 s numba JIT on M5 Pro. |
 
 Dev tools (pytest MIT, hypothesis MPL-2.0, ruff MIT, mypy MIT, pre-commit MIT, pip-audit
