@@ -17,6 +17,7 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from lightman.features.action_units import OPENGRAPHAU_NAMES
 from lightman.features.blendshapes import BLENDSHAPE_NAMES
 
 HEAD_COLUMNS: tuple[str, ...] = (
@@ -33,6 +34,7 @@ EYE_COLUMNS: tuple[str, ...] = (
     "eye.aspect_ratio_mean",
 )
 BLENDSHAPE_COLUMNS: tuple[str, ...] = tuple(f"blendshape.{n}" for n in BLENDSHAPE_NAMES)
+AU_COLUMNS: tuple[str, ...] = tuple(f"au.{n}" for n in OPENGRAPHAU_NAMES)
 META_COLUMNS: tuple[str, ...] = (
     "frame_index",
     "source_index",
@@ -47,7 +49,7 @@ META_COLUMNS: tuple[str, ...] = (
     "face.bbox_y1",
     "face.width_px",
 )
-SIGNAL_COLUMNS: tuple[str, ...] = HEAD_COLUMNS + EYE_COLUMNS + BLENDSHAPE_COLUMNS
+SIGNAL_COLUMNS: tuple[str, ...] = HEAD_COLUMNS + EYE_COLUMNS + BLENDSHAPE_COLUMNS + AU_COLUMNS
 FEATURE_COLUMNS: tuple[str, ...] = META_COLUMNS + SIGNAL_COLUMNS
 
 
@@ -61,6 +63,8 @@ def signal_unit(name: str) -> str:
         return "ratio"
     if name.startswith("blendshape."):
         return "coefficient"
+    if name.startswith("au."):
+        return "probability"
     return "unitless"
 
 
@@ -84,6 +88,7 @@ class FeatureTableBuilder:
         head: Sequence[float] | None,
         eyes: Sequence[float] | None,
         blendshapes: dict[str, float] | None,
+        aus: Sequence[float] | npt.NDArray[np.floating] | None = None,
     ) -> None:
         c = self._cols
         c["frame_index"].append(frame_index)
@@ -107,6 +112,9 @@ class FeatureTableBuilder:
             c[name].append(v)
         for bs_name, col in zip(BLENDSHAPE_NAMES, BLENDSHAPE_COLUMNS, strict=True):
             c[col].append(blendshapes.get(bs_name, math.nan) if blendshapes else math.nan)
+        av = list(aus) if aus is not None else [math.nan] * len(AU_COLUMNS)
+        for name, v in zip(AU_COLUMNS, av, strict=True):
+            c[name].append(v)
 
     def __len__(self) -> int:
         return len(self._cols["t_us"])

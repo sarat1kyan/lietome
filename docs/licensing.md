@@ -19,6 +19,7 @@ core package or its default download manifest.
 | jinja2 | BSD-3 | |
 | platformdirs | MIT | |
 | httpx | BSD-3 | |
+| onnxruntime | MIT | CPU by default; `lightman[cuda]` swaps in onnxruntime-gpu on Linux/Windows |
 
 Dev tools (pytest MIT, hypothesis MPL-2.0, ruff MIT, mypy MIT, pre-commit MIT, pip-audit
 Apache-2.0) are not distributed.
@@ -28,7 +29,7 @@ Apache-2.0) are not distributed.
 | Model | Code | Weights | Decision |
 |---|---|---|---|
 | MediaPipe Face Landmarker | Apache-2.0 | Apache-2.0 | **Accepted** (default backend). |
-| OpenGraphAU / ME-GraphAU (CVI-SZU) | Apache-2.0 | Apache-2.0 (per repo) | **Candidate** for AU backend, Phase 3. Trained on BP4D, DISFA, RAF-AU, Aff-Wild2, CK+, CASME II - all research-licensed datasets. Weights are distributed Apache-2.0 by the authors; dataset terms bind the trainers, not (by their text) downstream users of weights, but this is legally untested. Record risk; validate quality before adoption. |
+| OpenGraphAU / ME-GraphAU (CVI-SZU) | Apache-2.0 | Apache-2.0 (repo LICENSE) | **Accepted** as AU backend (ADR-008). Stage-2 ResNet-50 and ResNet-18 checkpoints converted to ONNX and redistributed under Apache-2.0 with NOTICE at github.com/sarat1kyan/lietome/releases/tag/models-v1. Trained on BP4D, DISFA, RAF-AU, Aff-Wild2, CK+, CASME II (research-licensed datasets). Dataset terms bind the trainers, not (by their text) downstream users of the weights; legally untested, recorded as a risk. Outputs unvalidated on this project's footage. |
 | Py-Feat 2.x | MIT | Mixed; per-model licenses linked from repo LICENSE | **Candidate**. Each model must be checked individually before use. |
 | OpenFace 2.x (Baltrusaitis) | Academic, non-commercial | same | **Rejected** for core. |
 | OpenFace 3.0 (CMU) | "Academic or non-profit noncommercial research use only" | same | **Rejected** for core. |

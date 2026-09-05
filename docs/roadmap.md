@@ -8,7 +8,7 @@ ends with tests, measurements, and a project-state update.
 | 0 | Research, architecture, toolchain, licensing, scaffolding | done (2026-09-05) |
 | 1 | Media ingestion: probe, limits, PTS-exact decode, rotation, VFR | done |
 | 2 | Single-face prerecorded video: landmarks, blendshapes, head pose, EAR, quality, Parquet | done |
-| 3 | Facial features & timeline: validated AU backend (OpenGraphAU/Py-Feat behind `AUDetector`), gaze proxy, optical-flow motion energy, camera-motion compensation, richer report | next |
+| 3 | Facial features & timeline: AU backend (OpenGraphAU behind `AUDetector`, done), gaze proxy, optical-flow motion energy, camera-motion compensation, richer report | in progress |
 | 4 | Baseline modeling: anchored+adaptive windows, change-point detection (ruptures), question-aware segments, baseline reliability calibration | next |
 | 5 | Audio: PyAV audio decode, Silero VAD, F0/energy/rate/pauses (librosa), jitter/shimmer (native), audio quality (SNR, clipping), audio events on the shared us time base | planned |
 | 6 | Speech: faster-whisper / whisper.cpp ASR (opt-in), word timings, response latency to questions, disfluencies; any language-model step optional and isolated from feature extraction | planned |

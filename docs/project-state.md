@@ -1,11 +1,12 @@
 # Project state
 
-Last updated: 2026-09-05 (end of first session). Facts only.
+Last updated: 2026-09-05 (session 2: AU backend). Facts only.
 
 ## Phase
 
-Phase 0 (research/architecture), 1 (media ingestion), and 2 (single-face prerecorded analysis)
-are complete as a first vertical slice. Version `0.1.0a0`. Nothing released.
+Phase 0 (research/architecture), 1 (media ingestion), 2 (single-face prerecorded analysis)
+complete; Phase 3 started with a real Action Unit backend. Version `0.1.0a0`. Model assets
+published as release `models-v1` on the repository; no package release.
 
 ## Working
 
@@ -17,6 +18,9 @@ are complete as a first vertical slice. Version `0.1.0a0`. Nothing released.
 * Media: PyAV probe/decode, PTS-exact us timestamps, VFR, display rotation, time-based
   subsampling, hostile-input limits (size, duration, pixels, frames, streams).
 * Face: MediaPipe Face Landmarker backend (478 landmarks, 52 blendshapes, transform), first face.
+* Action Units: OpenGraphAU stage-2 via onnxruntime (`AUDetector` protocol; resnet50 default,
+  resnet18 fast), 41 `au.*` columns, AU deviation events labelled with FACS names. `[au]`
+  config: enabled, model, stride, prefer_gpu, min_face_px. `lightman[cuda]` extra.
 * Features: head pose (Euler), EAR (left/right/mean), blendshape columns, face bbox/width,
   quality heuristic -> Parquet (zstd).
 * Baseline: leading-window robust median / 1.4826,MAD with unit floors, reliability score, notes.
@@ -25,9 +29,9 @@ are complete as a first vertical slice. Version `0.1.0a0`. Nothing released.
   filter. SPECULATION level is rejected by the schema.
 * Report: self-contained HTML, SD-unit timelines with baseline shading and event spans, ranked
   events with contributors and thumbnails, quality panel, disclaimer.
-* Tests: 55 (unit + fake-backend pipeline + real-model integration marked `model`), all passing
-  on macOS arm64 / Python 3.12. ruff and mypy --strict clean. CI workflow written (not yet run
-  on GitHub - no remote).
+* Tests: 62 (unit + fake-backend pipeline + real-model integration marked `model`), all passing
+  on macOS arm64 / Python 3.12. ruff and mypy --strict clean. CI green on ubuntu/macos/windows
+  x 3.12/3.13 (PR #1).
 
 ## Important decisions (see docs/adr/)
 
@@ -40,7 +44,12 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   `DrishtiMetalHelper`, "Check failed: service_ Service is unavailable") for IMAGE and VIDEO
   modes, with and without `Delegate.CPU`. 1.0.0 and 0.10.35 work. Pinned `!=1.0.1`. Not yet
   reported upstream (no matching issue found via `gh search`). Linux behavior untested.
-* Blendshapes != AUs; AU hints are "(proxy)". No validated AU model yet.
+* Blendshapes != AUs; blendshape AU hints stay "(proxy)". OpenGraphAU outputs are occurrence
+  probabilities from research-dataset training, unvalidated on our footage; resnet18 hedges
+  near 0.5 on the fixture where resnet50 is confident. Left/right AU variants least reliable.
+* AU resnet50 costs ~88 ms/frame CPU in the pipeline (20 s clip -> 58 s). Use `au.stride`,
+  resnet18, or CUDA. GPU path (onnxruntime-gpu) not yet exercised.
+* Swin-Tiny stage-2 export was not completed (script produced no output); not offered.
 * Head-pose yaw/pitch sign conventions vs. camera not verified on real footage (only the
   mathematical round-trip is tested). Deviation logic is sign-agnostic so results are unaffected.
 * Near-constant signals hit the scale floor -> over-sensitive 3SD events on static content
@@ -63,8 +72,8 @@ See docs/benchmarks.md. M5 Pro CPU: 3.4-3.8 ms/frame landmarker; 20 s clip end-t
 
 1. Validate on real single-person footage (user-provided or CC-licensed interview): check head
    pose signs, blink detection precision, event plausibility; tune floors/thresholds; record.
-2. Phase 3: `AUDetector` interface; evaluate OpenGraphAU (Apache-2.0) vs Py-Feat AU models
-   against blendshape proxies; ONNX export; license rows; benchmark on both machines.
+2. Phase 3 continued: AU temporal smoothing (probabilities jitter frame to frame), fp16/int8
+   ONNX quantization, CUDA benchmark on the RTX 3060 Ti, camera-motion compensation.
 3. Camera-motion compensation / global motion energy so pans and zooms do not read as behavior.
 4. Phase 5 audio: PyAV audio decode -> Silero VAD -> F0/energy/rate/pauses -> audio events on the
    shared time base.

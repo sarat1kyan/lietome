@@ -10,6 +10,13 @@ min_face_detection_confidence = 0.5
 min_face_presence_confidence = 0.5
 min_tracking_confidence = 0.5
 
+[au]                         # FACS Action Units via OpenGraphAU (ONNX Runtime)
+enabled = true
+model = "opengraphau/resnet50_s2"   # or "opengraphau/resnet18_s2" (~4x faster, less confident)
+stride = 1                   # run the AU model on every Nth analyzed frame
+prefer_gpu = true            # use CUDAExecutionProvider when onnxruntime-gpu is installed
+min_face_px = 48.0           # skip AU inference on faces narrower than this
+
 [limits]                     # hostile-input guards, enforced before pixel memory is allocated
 max_file_bytes = 4294967296  # 4 GiB
 max_duration_us = 14400000000 # 4 h
@@ -39,6 +46,8 @@ signals = [
   "blendshape.browDownLeft", "blendshape.browDownRight", "blendshape.browInnerUp",
   "blendshape.mouthPressLeft", "blendshape.mouthPressRight", "blendshape.jawOpen",
   "blendshape.eyeSquintLeft", "blendshape.eyeSquintRight",
+  "au.AU1", "au.AU2", "au.AU4", "au.AU5", "au.AU6", "au.AU7", "au.AU9", "au.AU10", "au.AU12",
+  "au.AU14", "au.AU15", "au.AU17", "au.AU20", "au.AU23", "au.AU24", "au.AU25", "au.AU26",
 ]
 
 [storage]
