@@ -31,6 +31,9 @@ dependencies = [
   "httpx>=0.27",                   # model download with size limits + streaming
   "onnxruntime>=1.20",
   "librosa>=0.11",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
