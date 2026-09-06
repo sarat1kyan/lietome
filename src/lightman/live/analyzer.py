@@ -17,6 +17,7 @@ import numpy as np
 import numpy.typing as npt
 
 from lightman import __version__
+from lightman.baseline.robust import STATE_SILENT, STATE_SPEAKING
 from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
 from lightman.core.logging import get_logger
@@ -28,6 +29,7 @@ from lightman.features.action_units import OPENGRAPHAU_NAMES
 from lightman.features.eyes import eye_aspect_ratios
 from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
+from lightman.features.smoothing import StreamingMedian
 from lightman.features.table import FeatureTableBuilder
 from lightman.live.streaming import (
     StreamingBaseline,
@@ -114,6 +116,7 @@ class LiveAnalyzer:
             subject_id=subject_id, extractor_id=landmarker.provenance.extractor_id
         )
         self.speaking = False
+        self._au_smooth: dict[str, StreamingMedian] = {}
         """Set by the caller from the audio stream: True while speech is detected."""
 
     @property
@@ -163,9 +166,10 @@ class LiveAnalyzer:
                 aus = self.au_detector.process(
                     rgb, (bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
                 )
-                values.update(
-                    {f"au.{n}": float(v) for n, v in zip(OPENGRAPHAU_NAMES, aus, strict=True)}
-                )
+                for n, v in zip(OPENGRAPHAU_NAMES, aus, strict=True):
+                    key = f"au.{n}"
+                    sm = self._au_smooth.setdefault(key, StreamingMedian())
+                    values[key] = sm.push(float(v))
             lm_xy = face.landmarks[:, :2]
             self.builder.add_frame(
                 frame_index=self._frame_index,
@@ -206,18 +210,19 @@ class LiveAnalyzer:
         self._frame_index += 1
 
         new_events: list[Event] = []
+        state = STATE_SPEAKING if self.speaking else STATE_SILENT
         if not self.baseline.ready:
-            if self.baseline.update(t_us, quality, values):
+            if self.baseline.update(t_us, quality, values, speaking=self.speaking):
                 self._arm_detectors()
         else:
             assert self.deviation is not None and self.blinks is not None  # noqa: S101
-            new_events += self.deviation.update(t_us, quality, values)
+            new_events += self.deviation.update(t_us, quality, values, state=state)
             new_events += self.blinks.update(
                 t_us, quality, values.get("eye.aspect_ratio_mean", float("nan"))
             )
         kept = [e for e in new_events if e.start_us >= self._warmup_us]
-        if self.speaking:
-            kept = [tag_speaking(e) for e in kept]
+        if self.speaking and STATE_SPEAKING not in self.baseline.state_snapshots:
+            kept = [tag_speaking(e) for e in kept]  # no speaking baseline: flag articulation
         kept += self.episodes.add(kept, t_us)
         self.events.extend(kept)
         return FrameResult(
@@ -242,6 +247,7 @@ class LiveAnalyzer:
             extractor_id=ext,
             frame_period_us=self.period_us,
             id_start=len(self.events),
+            state_baselines=self.baseline.state_snapshots,
         )
         self.blinks = StreamingBlinkDetector(
             self.cfg.events,
@@ -295,6 +301,13 @@ class LiveAnalyzer:
         base_path = session_dir / "baseline.json"
         base_path.write_text(json.dumps(_nan_to_none(snap.model_dump(mode="json")), indent=2))
         outputs.append(_artifact(base_path, "json"))
+        if self.baseline.state_snapshots:
+            sb_path = session_dir / "state_baselines.json"
+            payload = {"all": _nan_to_none(snap.model_dump(mode="json"))}
+            for k, v in self.baseline.state_snapshots.items():
+                payload[k] = _nan_to_none(v.model_dump(mode="json"))
+            sb_path.write_text(json.dumps(payload, indent=2))
+            outputs.append(_artifact(sb_path, "json"))
         live_stats = self.stats.summary()
         live_stats["ended_by"] = ended_by
         live_stats["blink_count"] = self.blinks.blink_count if self.blinks else 0

@@ -7,6 +7,7 @@ accounting) can be exercised and tested without a camera.
 
 from __future__ import annotations
 
+import contextlib
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -112,4 +113,5 @@ class FileSource:
     def close(self) -> None:
         close = getattr(self._iter, "close", None)
         if callable(close):
-            close()
+            with contextlib.suppress(ValueError):  # capture thread may be inside next()
+                close()
