@@ -9,7 +9,7 @@ from collections import deque
 import numpy as np
 
 from lightman.core.timebase import format_timecode
-from lightman.live.runner import LiveStats
+from lightman.live.analyzer import LiveStats
 from lightman.live.sources import LiveFrame
 from lightman.schema import Event
 

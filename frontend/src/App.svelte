@@ -7,6 +7,7 @@
   import Timeline from './components/Timeline.svelte'
   import EventPanel from './components/EventPanel.svelte'
   import QualityStrip from './components/QualityStrip.svelte'
+  import LiveView from './components/LiveView.svelte'
 
   let sessions = $state<SessionSummary[]>([])
   let current = $state<SessionSummary | null>(null)
@@ -18,6 +19,7 @@
   let playhead = $state(0) // microseconds
   let error = $state<string | null>(null)
   let loading = $state(false)
+  let view = $state<'sessions' | 'live'>('sessions')
 
   const VIDEO_SIGNALS = ['head.yaw_deg', 'head.pitch_deg', 'eye.aspect_ratio_mean', 'blendshape.browDownLeft', 'blendshape.mouthPressLeft', 'blendshape.jawOpen', 'au.AU4', 'au.AU6', 'au.AU12', 'au.AU24']
   const AUDIO_SIGNALS = ['voice.f0_hz', 'voice.energy_db']
@@ -40,20 +42,33 @@
   function seekTo(us: number) { playhead = us }
   function pick(e: LmEvent) { selected = e; playhead = e.peak_us ?? e.start_us }
 
+  async function reload(selectId?: string) {
+    sessions = await api.sessions()
+    const target = selectId ? sessions.find((s) => s.session_id === selectId) : sessions[0]
+    if (target) await open(target)
+  }
+  async function liveDone(sessionId: string) {
+    view = 'sessions'
+    try { await reload(sessionId) } catch (e) { error = String(e) }
+  }
+
   onMount(async () => {
-    try {
-      sessions = await api.sessions()
-      if (sessions.length) await open(sessions[0])
-    } catch (e) { error = String(e) }
+    try { await reload() } catch (e) { error = String(e) }
   })
 </script>
 
 <div class="app">
   <header class="top">
+    <div class="brand-nav">
     <div class="brand">
       <span class="mark"></span>
       <span class="name">Lightman</span>
       <span class="eyebrow">behavioral analysis workstation</span>
+    </div>
+    <nav class="nav">
+      <button class:on={view === 'sessions'} onclick={() => (view = 'sessions')}>sessions</button>
+      <button class:on={view === 'live'} onclick={() => (view = 'live')} disabled={api.isDemo()} title={api.isDemo() ? 'needs lightman serve' : ''}>live</button>
+    </nav>
     </div>
     <div class="top-right muted">
       {#if api.isDemo()}<span class="chip">demo data</span>{/if}
@@ -63,6 +78,9 @@
 
   <SessionRail {sessions} current={current?.session_id ?? null} onselect={open} />
 
+  {#if view === 'live'}
+    <LiveView ondone={liveDone} />
+  {:else}
   <main class="stage">
     {#if error}<div class="error">{error}</div>{/if}
     {#if current && detail}
@@ -77,6 +95,7 @@
       </div>
     {/if}
   </main>
+  {/if}
 
   <EventPanel {selected} {events} session={current} baseline={detail?.baseline ?? null} onpick={pick} />
 </div>
@@ -89,8 +108,13 @@
     grid-template-areas: "top top top" "rail stage panel";
     height: 100vh;
   }
+  .brand-nav { display: flex; align-items: center; }
   .top { grid-area: top; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
   .brand { display: flex; align-items: baseline; gap: 12px; }
+  .nav { display: flex; gap: 4px; margin-left: 24px; }
+  .nav button { background: none; border-color: transparent; color: var(--muted); padding: 4px 10px; }
+  .nav button.on { color: var(--text); border-color: var(--line-strong); background: var(--panel-2); }
+  .nav button:disabled { opacity: 0.4; cursor: default; }
   .mark { width: 10px; height: 10px; background: var(--accent); display: inline-block; transform: translateY(1px); }
   .name { font-weight: 600; letter-spacing: 0.02em; font-size: 14px; }
   .top-right { display: flex; gap: 12px; align-items: center; font-size: 12px; }

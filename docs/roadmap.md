@@ -14,7 +14,7 @@ ends with tests, measurements, and a project-state update.
 | 6 | Speech: faster-whisper / whisper.cpp ASR (opt-in), word timings, response latency to questions, disfluencies; any language-model step optional and isolated from feature extraction | planned |
 | 7 | Multimodal: event-level co-occurrence across modalities, uncertainty-aware confidence, missing-modality handling | planned |
 | 8 | Microexpression spotting research track: dataset adapters (licensed), LOSO/cross-dataset evaluation harness, optical strain baseline, TCN/transformer experiments | research |
-| 9 | Live webcam: bounded queue with drop-oldest, streaming baseline and detectors, console + preview sinks (done); live audio, WebSocket event stream (next) | in progress |
+| 9 | Live webcam: bounded queue with drop-oldest, streaming baseline and detectors, console + preview sinks, browser live tab over WebSocket with live audio (done); adaptive baseline, live multi-face (next) | in progress |
 | 10 | Live call/screen capture sources | planned |
 | 11 | Investigative frontend: Svelte 5 + Vite + TypeScript, custom design system, video-dominant layout, timeline scrubber, evidence panel (first version done); live view, multi-session comparison, keyboard scrubbing (next) | in progress |
 | 12 | Training/fine-tuning only after 8's evaluation harness is credible | research |

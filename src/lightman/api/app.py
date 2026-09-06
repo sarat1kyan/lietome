@@ -16,15 +16,17 @@ from importlib import resources
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, WebSocket
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from lightman import __version__
+from lightman.api.live_ws import AUFactory, LandmarkerFactory, live_endpoint
 from lightman.api.sessions import SessionNotFoundError, SessionStore
 from lightman.config import LightmanConfig
 from lightman.core.errors import LightmanError
 from lightman.core.logging import get_logger
+from lightman.models import ModelRegistry
 
 log = get_logger(__name__)
 
@@ -52,9 +54,22 @@ class JobRegistry:
             return dict(j) if j else None
 
 
-def create_app(output_root: Path, cfg: LightmanConfig | None = None) -> FastAPI:
+def create_app(
+    output_root: Path,
+    cfg: LightmanConfig | None = None,
+    *,
+    landmarker_factory: LandmarkerFactory | None = None,
+    au_factory: AUFactory | None = None,
+) -> FastAPI:
     cfg = cfg or LightmanConfig()
     store = SessionStore(output_root)
+    registry = ModelRegistry(
+        cache_dir=cfg.models.cache_dir, allow_download=cfg.models.allow_download
+    )
+    from lightman.pipeline.analyze import default_au_factory, default_landmarker_factory
+
+    lm_factory = landmarker_factory or default_landmarker_factory
+    au_fact = au_factory or default_au_factory
     jobs = JobRegistry()
     app = FastAPI(title="Lightman", version=__version__, docs_url="/api/docs", redoc_url=None)
 
@@ -164,6 +179,17 @@ def create_app(output_root: Path, cfg: LightmanConfig | None = None) -> FastAPI:
         if j is None:
             raise HTTPException(status_code=404, detail="unknown job")
         return j
+
+    @app.websocket("/api/live")
+    async def live(ws: WebSocket) -> None:
+        await live_endpoint(
+            ws,
+            cfg=cfg,
+            registry=registry,
+            output_root=output_root,
+            landmarker_factory=lm_factory,
+            au_factory=au_fact,
+        )
 
     static_dir = Path(str(resources.files("lightman.api").joinpath("static")))
     if (static_dir / "index.html").is_file():
