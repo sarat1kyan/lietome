@@ -35,6 +35,7 @@ from lightman.features.eyes import eye_aspect_ratios
 from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
 from lightman.features.table import SIGNAL_COLUMNS, FeatureTableBuilder
+from lightman.live.streaming import tag_speaking
 from lightman.media import MediaLimits, iter_video_frames, probe_media, sha256_file
 from lightman.models import ModelRegistry
 from lightman.pipeline.audio_stage import AudioStageResult, run_audio_stage
@@ -365,6 +366,12 @@ def analyze_video(
                 event_id_start=len(events),
                 vad=vad,
             )
+            speech = [(s.start_us, s.end_us) for s in audio.segments]
+
+            def _in_speech(e: Event) -> bool:
+                return any(e.start_us < b and e.end_us > a for a, b in speech)
+
+            events = [tag_speaking(e) if _in_speech(e) else e for e in events]
             events = sorted(
                 events + [e for e in audio.events if e.start_us >= warmup_us],
                 key=lambda e: (e.start_us, e.event_id),

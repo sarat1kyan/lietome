@@ -10,8 +10,10 @@ Binary message layout (client -> server): 1 byte kind (1 video JPEG, 2 audio flo
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import struct
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -136,9 +138,16 @@ async def live_endpoint(
                     await ws.send_text(json.dumps({"type": "error", "detail": "frame too large"}))
                     continue
                 analyzer.stats.frames_captured += 1
+                received_ns = (
+                    time.monotonic_ns()
+                )  # latency = receive -> analyzed (excludes network)
                 try:
                     rgb = await to_thread.run_sync(_decode_jpeg, payload)
-                    res = await to_thread.run_sync(analyzer.process_frame, rgb, int(t_us))
+                    res = await to_thread.run_sync(
+                        functools.partial(
+                            analyzer.process_frame, rgb, int(t_us), capture_wall_ns=received_ns
+                        )
+                    )
                 except LightmanError as exc:
                     await ws.send_text(json.dumps({"type": "error", "detail": str(exc)}))
                     continue
@@ -176,6 +185,7 @@ async def live_endpoint(
                 results = await to_thread.run_sync(audio.push, pcm, int(t_us))
                 if results:
                     last = results[-1]
+                    analyzer.speaking = last.speech_prob >= cfg.audio.vad_threshold
                     await ws.send_text(
                         json.dumps(
                             _nan_to_none(

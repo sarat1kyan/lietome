@@ -26,7 +26,15 @@ def test_median_mad_resists_contamination() -> None:
 
 def test_scale_floor_applied_for_constant_signal() -> None:
     c, s, n, floored = robust_center_scale(np.full(100, 0.3), "coefficient")
-    assert c == 0.3 and s == 0.01 and n == 100 and floored
+    assert c == 0.3 and s == 0.03 and n == 100 and floored
+
+
+def test_zero_inflated_signal_does_not_collapse_scale() -> None:
+    """A resting jawOpen is 0 most of the time with brief excursions: MAD alone says 0."""
+    x = np.zeros(600)
+    x[::5] = 0.4  # 20% excursions (talking during calibration)
+    _c, s, _n, floored = robust_center_scale(x, "coefficient")
+    assert s > 0.03 and not floored  # winsorized SD keeps a meaningful spread
 
 
 def test_nan_handling() -> None:
@@ -60,7 +68,7 @@ def test_leading_window_baseline_quality_and_notes() -> None:
     assert any("shorter than the baseline window" in x for x in b.notes)
     sb = b.signals["blendshape.jawOpen"]
     assert abs(sb.center - 0.1) < 0.01
-    assert abs(sb.scale - 0.02) < 0.01 or sb.floor_applied
+    assert abs(sb.scale - 0.02) < 0.015 or sb.floor_applied
     assert MAD_TO_SIGMA == 1.4826
 
 

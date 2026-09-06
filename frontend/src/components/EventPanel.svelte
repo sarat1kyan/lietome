@@ -2,8 +2,20 @@
   import { api, tc } from '../lib/api'
   import type { Baseline, LmEvent, SessionSummary } from '../lib/types'
   let { selected, events, session, baseline, onpick }: { selected: LmEvent | null; events: LmEvent[]; session: SessionSummary | null; baseline: Baseline | null; onpick: (e: LmEvent) => void } = $props()
-  let filter = $state<'all' | 'video' | 'audio' | 'interpretation'>('all')
-  const listed = $derived(events.filter((e) => e.event_type !== 'blink').filter((e) => filter === 'all' || (filter === 'interpretation' ? e.level === 'interpretation' : e.source === filter)).sort((a, b) => b.severity - a.severity))
+  let filter = $state<'episodes' | 'all' | 'video' | 'audio' | 'speaking'>('episodes')
+  const hasEpisodes = $derived(events.some((e) => e.event_type === 'episode' || e.event_type === 'multi_signal_deviation'))
+  const listed = $derived(
+    events
+      .filter((e) => e.event_type !== 'blink')
+      .filter((e) => {
+        if (filter === 'episodes') return hasEpisodes ? e.event_type === 'episode' || e.event_type === 'multi_signal_deviation' : true
+        if (filter === 'speaking') return e.tags.includes('speaking')
+        if (filter === 'all') return true
+        return e.source === filter
+      })
+      .sort((a, b) => b.severity - a.severity),
+  )
+  const sev = (v: number) => (v > 20 ? '>20' : v.toFixed(1))
   const blinks = $derived(events.filter((e) => e.event_type === 'blink').length)
   const thumb = $derived(selected && session ? api.thumbnail(session.session_id, selected.event_id) : null)
   const f3 = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(3))
@@ -15,6 +27,7 @@
       <div class="eyebrow">{selected.level} <span class="src">{selected.source}</span></div>
       <h2>{selected.label}</h2>
       <div class="mono when">{tc(selected.start_us)} to {tc(selected.end_us)} <span class="muted">({Math.round((selected.end_us - selected.start_us) / 1000)} ms)</span></div>
+      {#if selected.tags.includes('speaking')}<div class="speak">subject was speaking: mouth signals reflect articulation, confidence halved</div>{/if}
       {#if thumb}<img class="thumb" src={thumb} alt="" onerror={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')} />{/if}
       <p class="desc">{selected.description}</p>
       <div class="eyebrow">contributors</div>
@@ -23,7 +36,7 @@
         {#each selected.contributions.slice(0, 8) as c (c.feature)}
           <tr>
             <td class="feat">{c.feature}</td>
-            <td class="dev" class:neg={c.peak_deviation < 0}>{c.peak_deviation >= 0 ? '+' : ''}{c.peak_deviation.toFixed(1)} SD</td>
+            <td class="dev" class:neg={c.peak_deviation < 0}>{c.peak_deviation >= 0 ? '+' : ''}{sev(Math.abs(c.peak_deviation))} SD</td>
             <td class="muted">{f3(c.peak_value)} vs {f3(c.baseline_center)} {c.unit}</td>
           </tr>
         {/each}
@@ -46,7 +59,7 @@
       <span class="eyebrow">events <span class="mono">{listed.length}</span></span>
       <span class="muted mono">{blinks} blinks</span>
       <div class="filters">
-        {#each ['all', 'video', 'audio', 'interpretation'] as f}
+        {#each ['episodes', 'all', 'video', 'audio', 'speaking'] as f}
           <button class:on={filter === f} onclick={() => (filter = f as typeof filter)}>{f}</button>
         {/each}
       </div>
@@ -55,8 +68,8 @@
       {#each listed as e (e.event_id)}
         <li>
           <button class="ev" class:sel={selected?.event_id === e.event_id} class:audio={e.source === 'audio'} onclick={() => onpick(e)}>
-            <span class="sev mono">{e.severity.toFixed(1)}</span>
-            <span class="lbl">{e.label}</span>
+            <span class="sev mono">{sev(e.severity)}</span>
+            <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span>
             <span class="t mono muted">{tc(e.start_us).slice(3)}</span>
           </button>
         </li>
@@ -106,4 +119,6 @@
   .ev.audio .sev { color: var(--teal); }
   .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .t { font-size: 11px; }
+  .tag { font-style: normal; color: var(--muted); font-size: 10.5px; border: 1px solid var(--line-strong); padding: 0 4px; border-radius: 2px; margin-left: 6px; }
+  .speak { font-size: 11.5px; color: var(--teal); margin: 6px 0; }
 </style>

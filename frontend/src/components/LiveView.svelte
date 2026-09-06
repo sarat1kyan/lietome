@@ -20,6 +20,9 @@
   let events = $state<LmEvent[]>([])
   let session: LiveSession | null = null
   let sessionId = $state<string | null>(null)
+  let showAll = $state(false)
+  const shown = $derived(showAll ? events : events.filter((e) => e.event_type === 'episode' || e.source === 'audio'))
+  const sev = (v: number) => (v > 20 ? '>20' : v.toFixed(1))
 
   const WINDOW_US = 60e6
   const LANES = ['head.yaw_deg', 'eye.aspect_ratio_mean', 'blendshape.browDownLeft', 'au.AU4', 'au.AU12', 'voice.f0_hz', 'voice.energy_db']
@@ -47,7 +50,7 @@
       audioLast = m
       push('voice.f0_hz', m.t_us, m.f0_hz); push('voice.energy_db', m.t_us, m.energy_db)
     } else if (m.type === 'events') {
-      events = [...m.events.filter((e: LmEvent) => e.event_type !== 'blink'), ...events].slice(0, 200)
+      events = [...m.events.filter((e: LmEvent) => e.event_type !== 'blink'), ...events].slice(0, 300)
     } else if (m.type === 'session') {
       sessionId = m.session_id
     }
@@ -165,10 +168,10 @@
       {/if}
     </div>
     <div class="side">
-      <div class="eyebrow">events</div>
+      <div class="side-hdr"><span class="eyebrow">{showAll ? 'all events' : 'episodes and voice'}</span><button onclick={() => (showAll = !showAll)}>{showAll ? 'episodes' : 'all'}</button></div>
       <ul>
-        {#each events as e (e.event_id)}
-          <li class:audio={e.source === 'audio'}><span class="mono">{tc(e.start_us).slice(3)}</span> {e.label} <span class="mono sev">{e.severity.toFixed(1)}</span></li>
+        {#each shown as e (e.event_id)}
+          <li class:audio={e.source === 'audio'} class:episode={e.event_type === 'episode'}><span class="mono">{tc(e.start_us).slice(3)}</span> <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span> <span class="mono sev">{sev(e.severity)}</span></li>
         {:else}
           <li class="muted">none yet. the first 30 s calibrate the baseline.</li>
         {/each}
@@ -195,6 +198,11 @@
   ul { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; }
   li { padding: 5px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
   li .sev { margin-left: auto; color: var(--accent); }
+  li .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li.episode { border-left: 2px solid var(--accent); padding-left: 6px; }
+  .tag { font-style: normal; color: var(--muted); font-size: 10.5px; border: 1px solid var(--line-strong); padding: 0 4px; border-radius: 2px; }
+  .side-hdr { display: flex; justify-content: space-between; align-items: center; }
+  .side-hdr button { padding: 1px 8px; font-size: 11px; }
   li.audio .sev { color: var(--teal); }
   .lanes { width: 100%; display: block; border-top: 1px solid var(--line); background: var(--panel); }
 </style>
