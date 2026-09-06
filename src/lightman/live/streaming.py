@@ -285,3 +285,134 @@ class StreamingBlinkDetector:
                 tags=["eye"],
             )
         ]
+
+
+MOUTH_SIGNAL_PREFIXES: tuple[str, ...] = (
+    "blendshape.jaw",
+    "blendshape.mouth",
+    "au.AU10",
+    "au.AU12",
+    "au.AU13",
+    "au.AU14",
+    "au.AU15",
+    "au.AU16",
+    "au.AU17",
+    "au.AU18",
+    "au.AU20",
+    "au.AU22",
+    "au.AU23",
+    "au.AU24",
+    "au.AU25",
+    "au.AU26",
+    "au.AU27",
+    "au.AU28",
+)
+
+
+def is_mouth_signal(name: str) -> bool:
+    return name.startswith(MOUTH_SIGNAL_PREFIXES)
+
+
+def tag_speaking(event: Event) -> Event:
+    """Mark a mouth-region video event that happened while the subject was speaking.
+
+    Speech moves the jaw and lips; such deviations describe articulation, not expression.
+    Confidence is halved and the tag lets the UI fold them away.
+    """
+    if event.source != "video" or "speaking" in event.tags:
+        return event
+    if not any(is_mouth_signal(c.feature) for c in event.contributions):
+        return event
+    return event.model_copy(
+        update={"tags": [*event.tags, "speaking"], "confidence": round(event.confidence * 0.5, 3)}
+    )
+
+
+class StreamingEpisodes:
+    """Group overlapping per-signal deviation events into INTERPRETATION-level episodes.
+
+    An episode opens with the first deviation event and stays open while new events start
+    before ``gap_us`` after the last one ended. Closing emits one event whose contributions
+    are the per-signal peaks. Same claim as the offline cluster: several measured signals
+    departed from baseline together; nothing about psychological state.
+    """
+
+    def __init__(
+        self,
+        *,
+        subject_id: str,
+        extractor_id: str,
+        gap_us: int = 400_000,
+        min_signals: int = 2,
+        id_start: int = 300_000,
+    ) -> None:
+        self.subject_id = subject_id
+        self.extractor_id = extractor_id
+        self.gap_us = gap_us
+        self.min_signals = min_signals
+        self._k = id_start
+        self._members: list[Event] = []
+        self._end_us = 0
+
+    def add(self, events: list[Event], now_us: int) -> list[Event]:
+        out: list[Event] = []
+        for e in events:
+            if e.event_type != "baseline_deviation":
+                continue
+            if self._members and e.start_us > self._end_us + self.gap_us:
+                out += self._close()
+            self._members.append(e)
+            self._end_us = max(self._end_us, e.end_us)
+        if self._members and now_us > self._end_us + self.gap_us:
+            out += self._close()
+        return out
+
+    def flush(self) -> list[Event]:
+        return self._close()
+
+    def _close(self) -> list[Event]:
+        members, self._members = self._members, []
+        if not members:
+            return []
+        feats = {c.feature for e in members for c in e.contributions}
+        if len(feats) < self.min_signals:
+            return []
+        best: dict[str, FeatureContribution] = {}
+        for e in members:
+            for c in e.contributions:
+                prev = best.get(c.feature)
+                if prev is None or abs(c.peak_deviation) > abs(prev.peak_deviation):
+                    best[c.feature] = c
+        contribs = sorted(best.values(), key=lambda c: abs(c.peak_deviation), reverse=True)
+        speaking = sum("speaking" in e.tags for e in members)
+        sources = {e.source for e in members}
+        eid = f"ev_{self._k:05d}"
+        self._k += 1
+        tags = sorted({t for e in members for t in e.tags if t != "provisional"})
+        if speaking and speaking >= len(members) / 2:
+            tags = sorted({*tags, "speaking"})
+        return [
+            Event(
+                event_id=eid,
+                subject_id=self.subject_id,
+                source="multimodal" if len(sources) > 1 else next(iter(sources)),
+                event_type="episode",
+                level=EvidenceLevel.INTERPRETATION,
+                start_us=min(e.start_us for e in members),
+                end_us=max(e.end_us for e in members),
+                peak_us=max(members, key=lambda e: e.severity).peak_us,
+                label=f"episode: {len(feats)} signals deviate together",
+                description=(
+                    "Several measured signals departed from baseline in the same interval. "
+                    "This describes measured motion or voice only; it does not establish any "
+                    "psychological state."
+                ),
+                contributions=contribs[:12],
+                severity=max(e.severity for e in members),
+                confidence=float(np.mean([e.confidence for e in members])),
+                quality=float(np.mean([e.quality for e in members])),
+                baseline_quality=members[0].baseline_quality,
+                extractor_id=self.extractor_id,
+                tags=tags,
+            )
+        ]

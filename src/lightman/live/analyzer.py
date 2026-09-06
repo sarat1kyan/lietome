@@ -33,6 +33,8 @@ from lightman.live.streaming import (
     StreamingBaseline,
     StreamingBlinkDetector,
     StreamingDeviationDetector,
+    StreamingEpisodes,
+    tag_speaking,
 )
 from lightman.pipeline.analyze import DISCLAIMER, _artifact, _nan_to_none, _new_session_id
 from lightman.schema import AnalysisManifest, Event, MediaInfo, OutputArtifact, QualitySummary
@@ -108,6 +110,11 @@ class LiveAnalyzer:
         self._warmup_us = cfg.events.warmup_ms * 1000
         self._size: tuple[int, int] = (0, 0)
         self._closed = False
+        self.episodes = StreamingEpisodes(
+            subject_id=subject_id, extractor_id=landmarker.provenance.extractor_id
+        )
+        self.speaking = False
+        """Set by the caller from the audio stream: True while speech is detected."""
 
     @property
     def baseline_ready(self) -> bool:
@@ -209,6 +216,9 @@ class LiveAnalyzer:
                 t_us, quality, values.get("eye.aspect_ratio_mean", float("nan"))
             )
         kept = [e for e in new_events if e.start_us >= self._warmup_us]
+        if self.speaking:
+            kept = [tag_speaking(e) for e in kept]
+        kept += self.episodes.add(kept, t_us)
         self.events.extend(kept)
         return FrameResult(
             t_us=t_us,
@@ -252,7 +262,10 @@ class LiveAnalyzer:
             return out_dir / self.session_id
         self._closed = True
         if self.deviation is not None:
-            self.events.extend(self.deviation.flush())
+            flushed = self.deviation.flush()
+            self.events.extend(flushed)
+            self.events.extend(self.episodes.add(flushed, self._last_t or 0))
+        self.events.extend(self.episodes.flush())
         if not self.baseline.ready:
             self.baseline.finalize()
         snap = self.baseline.snapshot
