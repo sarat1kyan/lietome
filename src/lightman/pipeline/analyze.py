@@ -22,7 +22,8 @@ import numpy.typing as npt
 
 from lightman import __version__
 from lightman.audio.vad import SileroVAD
-from lightman.baseline import BaselineSnapshot, compute_leading_window_baseline
+from lightman.baseline import BaselineSnapshot, compute_state_baselines
+from lightman.baseline.robust import STATE_ALL, STATE_SILENT, STATE_SPEAKING
 from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
 from lightman.core.errors import LightmanError, UnsupportedMediaError
@@ -34,7 +35,8 @@ from lightman.face.base import FaceLandmarker
 from lightman.features.eyes import eye_aspect_ratios
 from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
-from lightman.features.table import SIGNAL_COLUMNS, FeatureTableBuilder
+from lightman.features.smoothing import median_smooth
+from lightman.features.table import AU_COLUMNS, SIGNAL_COLUMNS, FeatureTableBuilder
 from lightman.live.streaming import tag_speaking
 from lightman.media import MediaLimits, iter_video_frames, probe_media, sha256_file
 from lightman.models import ModelRegistry
@@ -304,6 +306,25 @@ def analyze_video(
         mean_au_ms=round(float(np.mean(au_ms)), 2) if au_ms else None,
     )
 
+    # ---- audio (before the baseline: speech segments define the speaking state)
+    audio: AudioStageResult | None = None
+    if cfg.audio.enabled and media.has_audio:
+        ta = time.perf_counter()
+        try:
+            vad = vad_factory(cfg, registry) if vad_factory else None
+            audio = run_audio_stage(
+                media_path,
+                cfg=cfg,
+                registry=registry,
+                origin_us=origin_us or 0,
+                subject_id=subject_id,
+                event_id_start=500_000,
+                vad=vad,
+            )
+        except LightmanError as exc:
+            log.warning("audio_stage_failed", error=str(exc))
+        timing["audio_ms"] = (time.perf_counter() - ta) * 1000
+
     # ---- baseline
     t3 = time.perf_counter()
     t_us = cols["t_us"].astype(np.int64)
@@ -311,7 +332,20 @@ def analyze_video(
     signals: dict[str, npt.NDArray[np.floating]] = {
         name: cols[name].astype(np.float64) for name in SIGNAL_COLUMNS
     }
-    baseline = compute_leading_window_baseline(t_us, quality, signals, cfg.baseline)
+    for name in AU_COLUMNS:  # classifier outputs jitter frame to frame; smooth before scoring
+        signals[name] = median_smooth(signals[name])
+    speaking_mask: npt.NDArray[np.bool_] | None = None
+    frame_state: npt.NDArray[np.str_] | None = None
+    if audio is not None and audio.segments:
+        speaking_mask = np.zeros(t_us.shape, dtype=bool)
+        for seg in audio.segments:
+            speaking_mask |= (t_us >= seg.start_us) & (t_us < seg.end_us)
+    state_baselines = compute_state_baselines(t_us, quality, signals, cfg.baseline, speaking_mask)
+    baseline = state_baselines[STATE_ALL]
+    if speaking_mask is not None:
+        frame_state = np.where(speaking_mask, STATE_SPEAKING, STATE_SILENT).astype(str)
+        if STATE_SPEAKING not in state_baselines:
+            frame_state = None  # not enough speech in the window: fall back to 'all'
     timing["baseline_ms"] = (time.perf_counter() - t3) * 1000
 
     # ---- events
@@ -337,6 +371,8 @@ def analyze_video(
         extractor_id=prov.extractor_id,
         id_start=len(blinks),
         exclude_intervals=[(b.start_us, b.end_us) for b in blinks],
+        state_baselines=state_baselines if frame_state is not None else None,
+        frame_state=frame_state,
     )
     clusters = cluster_cooccurring(
         deviations,
@@ -349,36 +385,20 @@ def analyze_video(
         (e for e in blinks + deviations + clusters if e.start_us >= warmup_us),
         key=lambda e: (e.start_us, e.event_id),
     )
-    timing["events_ms"] = (time.perf_counter() - t4) * 1000
+    if audio is not None:
+        speech = [(sg.start_us, sg.end_us) for sg in audio.segments]
 
-    # ---- audio
-    audio: AudioStageResult | None = None
-    if cfg.audio.enabled and media.has_audio:
-        ta = time.perf_counter()
-        try:
-            vad = vad_factory(cfg, registry) if vad_factory else None
-            audio = run_audio_stage(
-                media_path,
-                cfg=cfg,
-                registry=registry,
-                origin_us=origin_us or 0,
-                subject_id=subject_id,
-                event_id_start=len(events),
-                vad=vad,
-            )
-            speech = [(s.start_us, s.end_us) for s in audio.segments]
+        def _in_speech(e: Event) -> bool:
+            return any(e.start_us < b and e.end_us > a for a, b in speech)
 
-            def _in_speech(e: Event) -> bool:
-                return any(e.start_us < b and e.end_us > a for a, b in speech)
-
+        # Only tag when no speaking-state baseline exists; with one, speech is scored fairly.
+        if frame_state is None:
             events = [tag_speaking(e) if _in_speech(e) else e for e in events]
-            events = sorted(
-                events + [e for e in audio.events if e.start_us >= warmup_us],
-                key=lambda e: (e.start_us, e.event_id),
-            )
-        except LightmanError as exc:
-            log.warning("audio_stage_failed", error=str(exc))
-        timing["audio_ms"] = (time.perf_counter() - ta) * 1000
+        events = sorted(
+            events + [e for e in audio.events if e.start_us >= warmup_us],
+            key=lambda e: (e.start_us, e.event_id),
+        )
+    timing["events_ms"] = (time.perf_counter() - t4) * 1000
 
     # ---- summary
     face_frames = int(cols["face_present"].sum())
@@ -428,6 +448,10 @@ def analyze_video(
             if audio is not None
             else None
         ),
+        "baseline_states": {
+            k: {"frames_used": v.frames_used, "quality": v.quality}
+            for k, v in state_baselines.items()
+        },
         "event_counts": {
             k: sum(1 for e in events if e.event_type == k)
             for k in sorted({e.event_type for e in events})
@@ -468,6 +492,13 @@ def analyze_video(
     base_path = session_dir / "baseline.json"
     _write_json(base_path, _nan_to_none(baseline.model_dump(mode="json")))
     outputs.append(_artifact(base_path, "json"))
+    if len(state_baselines) > 1:
+        sb_path = session_dir / "state_baselines.json"
+        _write_json(
+            sb_path,
+            {k: _nan_to_none(v.model_dump(mode="json")) for k, v in state_baselines.items()},
+        )
+        outputs.append(_artifact(sb_path, "json"))
 
     if audio is not None:
         af_path = session_dir / "audio_features.parquet"
