@@ -1,6 +1,6 @@
 # Project state
 
-Last updated: 2026-09-05 (session 3: browser live capture, three real webcam sessions, calibration v2). Facts only.
+Last updated: 2026-09-05 (session 3: browser live capture, four real webcam sessions, adaptive baseline). Facts only.
 
 ## Phase
 
@@ -77,8 +77,11 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   61/70 eye events and 131/165 squint events overlapped blinks (live path lacked the offline
   blink exclusion, fixed); reading-only speaking baseline did not represent conversation
   (jawOpen p90 0.03 vs 0.20), so calibration v2 adds a 14 s free-talk phase (40 s total).
-  AU/blendshape entry thresholds raised to 4 SD. Next measurement decides whether a bounded
-  adaptive speaking baseline is still needed.
+  AU/blendshape entry thresholds raised to 4 SD.
+* Session 4 (3:11 with calibration v2): 268 deviations/min, 29 episodes/min; conversation
+  range far wider than the speaking calibration (browInnerUp p90 0.08 vs 0.61). Bounded
+  adaptive baseline added (ADR-014): replay 336 -> 133/min (session 4), 381 -> 117/min
+  (session 3). Remaining rate is dominated by jaw/brow motion during animated speech.
 
 ## Known limitations / issues
 
@@ -126,8 +129,8 @@ See docs/benchmarks.md. M5 Pro CPU: 3.4-3.8 ms/frame landmarker; 20 s clip end-t
 3. Interview protocol mode: question markers, per-question deviation summaries, response
    latency, control-vs-relevant comparison, ground-truth harness (per-person AUROC with CIs).
    Never a lie label.
-4. Calm conversation measurement with calibration v2; then decide on a bounded adaptive
-   speaking baseline and further threshold tuning via experiments/replay_events.py.
+4. Measure a conversation with the adaptive baseline; tune bounds/half-life via
+   experiments/replay_events.py on stored sessions.
 5. Adaptive (anchored, bounded) baseline; UI keyboard scrubbing; session comparison.
 5. Camera-motion compensation / global motion energy so pans and zooms do not read as behavior.
 6. Phase 6: ASR (faster-whisper / whisper.cpp, opt-in), word timings, turn structure and

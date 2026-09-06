@@ -18,3 +18,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 011 | Web UI: FastAPI + Svelte 5 workstation | accepted |
 | 012 | Browser live capture over WebSocket | accepted |
 | 013 | Speaking/silent state baselines and AU smoothing | accepted |
+| 014 | Bounded adaptive baseline | accepted |

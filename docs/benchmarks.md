@@ -85,6 +85,13 @@ blink exclusion). Calibration jawOpen p90 0.03 vs 0.20 in conversation: reading 
 talking. Led to the free-talk phase, per-group thresholds and blink suppression for eye-region
 signals.
 
+Session 4: 3 min 11 s with calibration v2 (quiet, read, free talk) then conversation: 2535
+frames, 13.3 fps, 23 ms latency, 0 dropped, 63 blinks, 17 voice events, baseline quality 0.88
+(silent 241 / speaking 289 frames). 675 deviations (268/min), 72 episodes. Conversation
+range far exceeded the speaking calibration sample (browInnerUp p90 0.08 vs 0.61, AU1 0.33 vs
+0.82, jawOpen 0.05 vs 0.18). Led to ADR-014 (bounded adaptive baseline). Replayed with the adaptive baseline: 335
+deviations (133/min), 58 episodes, max severity 29 SD; session 3 replayed: 117/min.
+
 ## Not yet measured
 
 CUDA/RTX 3060 Ti anything; end-to-end at 1080p/4K; memory footprint over long recordings;
