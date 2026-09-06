@@ -26,6 +26,13 @@ is not uploaded. `POST /api/analyze` stores the uploaded file only for the durat
 analysis unless `keep_media` is requested, in which case it is kept as `media.mp4` in the
 session directory so the UI can stream it.
 
+## Browser live tab
+
+The page asks the browser for camera/microphone permission. Frames (JPEG) and audio (16 kHz
+PCM) are sent to the local server over a WebSocket, analyzed in memory and discarded; only
+features and events are written to the session directory. A red LIVE badge is shown on the
+self-view while capture runs.
+
 ## Live mode
 
 `lightman live` prints a visible notice naming the camera, and the preview window is labelled

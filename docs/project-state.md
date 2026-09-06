@@ -1,6 +1,6 @@
 # Project state
 
-Last updated: 2026-09-05 (session 2: AU backend, audio, Docker, live mode, web UI). Facts only.
+Last updated: 2026-09-05 (session 3: browser live capture with audio). Facts only.
 
 ## Phase
 
@@ -30,6 +30,10 @@ published as release `models-v1` on the repository; no package release.
   + analyze job, static SPA) and `frontend/` (Svelte 5 + Vite + TS): session rail, video stage
   with local-file playback, canvas timeline (SD lanes, event strip, playhead), evidence panel,
   quality strip. Demo single-file build. API tests with TestClient.
+* Browser live tab: WS /api/live, LiveAnalyzer shared with the CLI, StreamingAudioAnalyzer
+  (Silero VAD + single-window YIN, voiced-gated baseline, voice deviation events), landmark
+  overlay, readouts, rolling lanes, event feed, session saved on stop. Tested with fake models
+  over the WebSocket; first real webcam run happened on the maintainer's machine via the CLI.
 * Live mode (`lightman live`): webcam or real-time file replay, capture thread + queue(2,
   drop oldest), streaming baseline/deviation/blink detectors verified against the offline
   ones, console + labelled preview window, same session outputs. Video only.
@@ -67,7 +71,7 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
 * Swin-Tiny stage-2 export was not completed (script produced no output); not offered.
 * Web UI: no auth (localhost only), no live view, no multi-session comparison, no keyboard
   shortcuts; only checked via demo build and API tests, not yet through a browser session.
-* Live: no microphone/audio yet; baseline frozen after calibration; camera access could not
+* Live: CLI path has no microphone; browser path has audio but no jitter/shimmer/segments; baseline frozen after calibration; camera access could not
   be validated on the development machine (terminal lacks camera permission), only file replay.
 * Audio: no diarization (multiple speakers pool into one baseline), no ASR, no question/answer
   timing (response latency), jitter/shimmer are frame-track approximations, first pyin call
@@ -96,8 +100,8 @@ See docs/benchmarks.md. M5 Pro CPU: 3.4-3.8 ms/frame landmarker; 20 s clip end-t
    pose signs, blink detection precision, event plausibility; tune floors/thresholds; record.
 2. Phase 3 continued: AU temporal smoothing (probabilities jitter frame to frame), fp16/int8
    ONNX quantization, CUDA benchmark on the RTX 3060 Ti, camera-motion compensation.
-3. UI: browser QA, keyboard scrubbing, live view over WebSocket, session comparison.
-4. Live audio (sounddevice capture -> streaming VAD/F0).
+3. UI: browser QA on the live tab with real camera/mic, keyboard scrubbing, session comparison.
+4. Adaptive (anchored, bounded) baseline for long live sessions.
 5. Camera-motion compensation / global motion energy so pans and zooms do not read as behavior.
 6. Phase 6: ASR (faster-whisper / whisper.cpp, opt-in), word timings, turn structure and
    response latency; diarization (pyannote, opt-in) or simple speaker clustering.

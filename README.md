@@ -66,6 +66,11 @@ inlined for sharing a look without a server.
 
 ### Live webcam
 
+In the web UI, open the **live** tab: the browser asks for camera/microphone permission,
+frames and audio stream to the local server over a WebSocket, landmarks and the face box are
+drawn on the self-view, voice pitch/loudness and face signals get baseline-deviation events,
+and stopping saves a normal session. From the terminal (video only):
+
 ```bash
 uv run lightman live                    # camera 0, preview window, landmarks + blendshapes
 uv run lightman live --au               # adds the fast AU model (resnet18), still 30 fps on M5 Pro CPU
@@ -85,7 +90,7 @@ a normal session directory is written when you press q. Frames are never saved.
   (MEGC 2025 spot-then-recognize scores ~ 0.006-0.009); see `docs/scientific-limitations.md`.
 * No deception score. See the same document for why.
 * Single face per video; multi-person tracking is on the roadmap.
-* Live mode is video-only so far (no microphone yet).
+* CLI live mode is video-only; the browser live tab has microphone support.
 
 ## Documentation
 
