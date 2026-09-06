@@ -25,18 +25,22 @@ from lightman.features.table import signal_unit
 
 MAD_TO_SIGMA = 1.4826
 
-# Absolute lower bounds on the robust scale, per unit. Prevents division by ~0 for signals
-# that are nearly constant in the window (which would turn measurement noise into "events").
+# Absolute lower bounds on the robust scale, per unit, i.e. the measurement noise of the
+# extractors on a resting face/voice. Measured on a real 30 s webcam calibration (M5 Pro,
+# 640 px, MediaPipe + OpenGraphAU resnet18, 2026-09-06): resting blendshape p95 deviation
+# ~0.05, AU probability MAD 0.05-0.17, EAR MAD 0.037, head angles MAD 0.9-3 deg.
 SCALE_FLOOR_BY_UNIT: dict[str, float] = {
-    "deg": 0.5,
-    "ratio": 0.005,
-    "coefficient": 0.01,
-    "probability": 0.02,
-    "hz": 2.0,
-    "db": 1.0,
+    "deg": 1.0,
+    "ratio": 0.01,
+    "coefficient": 0.03,
+    "probability": 0.05,
+    "hz": 4.0,
+    "db": 1.5,
     "model_units": 0.05,
     "unitless": 1e-3,
 }
+WINSOR_FRACTION = 0.10
+DEGENERATE_FRACTION = 1 / 3  # MAD scale below floor/3 counts as collapsed
 
 
 class SignalBaseline(BaseModel):
@@ -45,7 +49,9 @@ class SignalBaseline(BaseModel):
     feature: str
     unit: str
     center: float = Field(description="Median over the baseline window")
-    scale: float = Field(description="max(1.4826 * MAD, unit floor)")
+    scale: float = Field(
+        description="1.4826*MAD, or trimmed SD when MAD is degenerate; >= unit floor"
+    )
     n: int = Field(description="Number of quality-gated samples used")
     floor_applied: bool
 
@@ -63,15 +69,38 @@ class BaselineSnapshot(BaseModel):
     signals: dict[str, SignalBaseline]
 
 
+def winsorized_sd(x: npt.NDArray[np.floating], fraction: float = WINSOR_FRACTION) -> float:
+    """SD after clipping the top/bottom ``fraction`` of values: robust to a few outliers but,
+    unlike the MAD, does not collapse to zero on zero-inflated signals (a resting jawOpen is
+    0.00 most of the time with brief excursions while speaking)."""
+    if x.size < 5:
+        return float(np.std(x)) if x.size else math.nan
+    lo, hi = np.percentile(x, [100 * fraction, 100 * (1 - fraction)])
+    return float(np.std(np.clip(x, lo, hi)))
+
+
 def robust_center_scale(x: npt.NDArray[np.floating], unit: str) -> tuple[float, float, int, bool]:
+    """Center = median. Scale = 1.4826*MAD when that is at least the unit floor; otherwise
+    max(10%-winsorized SD, unit floor).
+
+    The MAD alone collapses on zero-inflated signals (a resting jawOpen) and turned ordinary
+    expressions into 50-80 SD "events" on real webcam data. The trimmed-SD fallback and floors
+    measured on a real calibration window keep the SD scale meaningful without giving up the
+    MAD's contamination resistance where it works.
+    """
     finite = x[np.isfinite(x)]
     n = int(finite.size)
     if n == 0:
         return math.nan, math.nan, 0, False
     center = float(np.median(finite))
     mad = float(np.median(np.abs(finite - center)))
-    scale = MAD_TO_SIGMA * mad
     floor = SCALE_FLOOR_BY_UNIT.get(unit, 1e-3)
+    scale = MAD_TO_SIGMA * mad
+    if scale < floor * DEGENERATE_FRACTION:
+        # MAD is degenerate (zero-inflated or near-constant signal): fall back to a trimmed SD
+        # so a signal that *does* move during calibration keeps a meaningful spread. When the
+        # MAD is healthy we keep it: it tolerates far more contamination than any SD.
+        scale = max(scale, winsorized_sd(finite))
     floored = scale < floor
     return center, max(scale, floor), n, floored
 
