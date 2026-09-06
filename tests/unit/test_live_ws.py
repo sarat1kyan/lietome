@@ -38,16 +38,20 @@ def test_live_ws_round_trip(tmp_path: Path) -> None:
     with client.websocket_connect("/api/live") as ws:
         ws.send_text(json.dumps({"type": "start", "au": False, "audio": False, "source": "test"}))
         ready = ws.receive_json()
+        ws.send_text(json.dumps({"type": "phase", "speaking": False}))
         assert ready["type"] == "ready" and ready["session_id"]
         jpeg = _jpeg()
         got_events = False
         frames = 0
         for i in range(90):
             ws.send_bytes(_frame_msg(i * 33_333, jpeg))
-            while True:  # events messages may precede the frame acknowledgement
+            while True:  # events/baseline messages may follow the frame acknowledgement
                 msg = ws.receive_json()
                 if msg["type"] == "events":
                     got_events = True
+                    continue
+                if msg["type"] == "baseline":
+                    assert msg["frames_used"] > 0
                     continue
                 break
             assert msg["type"] == "frame"

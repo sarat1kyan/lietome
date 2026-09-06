@@ -116,6 +116,11 @@ class LiveAnalyzer:
             subject_id=subject_id, extractor_id=landmarker.provenance.extractor_id
         )
         self.speaking = False
+        """Set from the audio stream: True while speech is detected."""
+        self.speaking_hint: bool | None = None
+        """Guided-calibration phase hint; used when no audio stream is present."""
+        self.has_audio = False
+        self.baseline_just_ready = False
         self._au_smooth: dict[str, StreamingMedian] = {}
         """Set by the caller from the audio stream: True while speech is detected."""
 
@@ -210,10 +215,12 @@ class LiveAnalyzer:
         self._frame_index += 1
 
         new_events: list[Event] = []
-        state = STATE_SPEAKING if self.speaking else STATE_SILENT
+        speaking = self.speaking or bool(self.speaking_hint and not self.has_audio)
+        state = STATE_SPEAKING if speaking else STATE_SILENT
         if not self.baseline.ready:
-            if self.baseline.update(t_us, quality, values, speaking=self.speaking):
+            if self.baseline.update(t_us, quality, values, speaking=speaking):
                 self._arm_detectors()
+                self.baseline_just_ready = True
         else:
             assert self.deviation is not None and self.blinks is not None  # noqa: S101
             new_events += self.deviation.update(t_us, quality, values, state=state)
@@ -221,7 +228,7 @@ class LiveAnalyzer:
                 t_us, quality, values.get("eye.aspect_ratio_mean", float("nan"))
             )
         kept = [e for e in new_events if e.start_us >= self._warmup_us]
-        if self.speaking and STATE_SPEAKING not in self.baseline.state_snapshots:
+        if speaking and STATE_SPEAKING not in self.baseline.state_snapshots:
             kept = [tag_speaking(e) for e in kept]  # no speaking baseline: flag articulation
         kept += self.episodes.add(kept, t_us)
         self.events.extend(kept)

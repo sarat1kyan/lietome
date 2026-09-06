@@ -121,9 +121,12 @@ async def live_endpoint(
                         subject_id=str(data.get("subject", "subject_001")),
                         source_description=str(data.get("source", "browser"))[:80],
                     )
+                    analyzer.has_audio = audio is not None
                     await ws.send_text(
                         json.dumps({"type": "ready", "session_id": analyzer.session_id})
                     )
+                elif kind == "phase" and analyzer is not None:
+                    analyzer.speaking_hint = bool(data.get("speaking", False))
                 elif kind == "stop":
                     ended_by = "user"
                     break
@@ -178,6 +181,23 @@ async def live_endpoint(
                 )
                 if res.new_events:
                     await ws.send_text(json.dumps(_events_payload(res.new_events)))
+                if analyzer.baseline_just_ready:
+                    analyzer.baseline_just_ready = False
+                    snap = analyzer.baseline.snapshot
+                    states = {
+                        k: {"frames_used": v.frames_used, "quality": round(v.quality, 2)}
+                        for k, v in analyzer.baseline.state_snapshots.items()
+                    }
+                    await ws.send_text(
+                        json.dumps(
+                            {
+                                "type": "baseline",
+                                "frames_used": snap.frames_used if snap else 0,
+                                "quality": round(snap.quality, 2) if snap else 0.0,
+                                "states": states,
+                            }
+                        )
+                    )
             elif kind_b == 2 and audio is not None:
                 if len(payload) % 4 or len(payload) // 4 > MAX_AUDIO_SAMPLES:
                     continue
