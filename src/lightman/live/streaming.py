@@ -15,7 +15,14 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from lightman.baseline.robust import BaselineSnapshot, SignalBaseline, robust_center_scale
+from lightman.baseline.robust import (
+    STATE_ALL,
+    STATE_SILENT,
+    STATE_SPEAKING,
+    BaselineSnapshot,
+    SignalBaseline,
+    robust_center_scale,
+)
 from lightman.config import BaselineConfig, EventsConfig
 from lightman.events.deviation import _label_for
 from lightman.features.table import signal_unit
@@ -27,18 +34,22 @@ class StreamingBaseline:
 
     def __init__(self, cfg: BaselineConfig, signals: list[str]) -> None:
         self.cfg = cfg
-        self.signals = signals
-        self._values: dict[str, list[float]] = {s: [] for s in signals}
+        self.signals = list(dict.fromkeys(signals))  # dedupe: a repeated name would double-append
+        self._values: dict[str, list[float]] = {s: [] for s in self.signals}
         self._quality: list[float] = []
+        self._states: list[str] = []
         self._n_window = 0
         self._last_t_us = 0
         self.snapshot: BaselineSnapshot | None = None
+        self.state_snapshots: dict[str, BaselineSnapshot] = {}
 
     @property
     def ready(self) -> bool:
         return self.snapshot is not None
 
-    def update(self, t_us: int, quality: float, values: Mapping[str, float]) -> bool:
+    def update(
+        self, t_us: int, quality: float, values: Mapping[str, float], *, speaking: bool = False
+    ) -> bool:
         """Feed one frame. Returns True the moment the baseline becomes ready."""
         if self.ready:
             return False
@@ -48,15 +59,47 @@ class StreamingBaseline:
             self._n_window += 1
             if quality >= self.cfg.min_quality:
                 self._quality.append(quality)
+                self._states.append(STATE_SPEAKING if speaking else STATE_SILENT)
                 for s in self.signals:
                     self._values[s].append(float(values.get(s, math.nan)))
             return False
         self.finalize()
         return True
 
+    def _snapshot_for(self, mask: np.ndarray, state: str) -> BaselineSnapshot | None:
+        n_used = int(mask.sum())
+        if n_used < self.cfg.min_samples:
+            return None
+        per_signal: dict[str, SignalBaseline] = {}
+        for s in self.signals:
+            unit = signal_unit(s)
+            vals = np.asarray(self._values[s])[mask]
+            center, scale, n, floored = robust_center_scale(vals, unit)
+            per_signal[s] = SignalBaseline(
+                feature=s, unit=unit, center=center, scale=scale, n=n, floor_applied=floored
+            )
+        q = np.asarray(self._quality)[mask]
+        size_term = min(1.0, n_used / self.cfg.good_samples) if self.cfg.good_samples else 0.0
+        return BaselineSnapshot(
+            mode="leading_window",
+            state=state,
+            window_start_us=0,
+            window_end_us=self._last_t_us,
+            frames_in_window=self._n_window,
+            frames_used=n_used,
+            quality=max(0.0, min(1.0, size_term * float(q.mean()))),
+            notes=[],
+            signals=per_signal,
+        )
+
     def finalize(self) -> None:
         if self.ready:
             return
+        states = np.asarray(self._states, dtype=str)
+        for state in (STATE_SILENT, STATE_SPEAKING):
+            snap = self._snapshot_for(states == state, state) if states.size else None
+            if snap is not None:
+                self.state_snapshots[state] = snap
         per_signal: dict[str, SignalBaseline] = {}
         for s in self.signals:
             unit = signal_unit(s)
@@ -73,8 +116,11 @@ class StreamingBaseline:
                 f"only {n_used} quality-gated frames in the calibration window; "
                 "deviations are unreliable"
             )
+        if STATE_SPEAKING in self.state_snapshots:
+            notes.append("separate speaking-state baseline available")
         self.snapshot = BaselineSnapshot(
             mode="leading_window",
+            state=STATE_ALL,
             window_start_us=0,
             window_end_us=self._last_t_us,
             frames_in_window=self._n_window,
@@ -92,6 +138,7 @@ class _OpenRun:
     peak_z: float
     peak_value: float
     qualities: list[float] = field(default_factory=list)
+    state: str | None = None
     emitted_open: bool = False
 
 
@@ -106,9 +153,11 @@ class StreamingDeviationDetector:
         frame_period_us: int,
         emit_open_after_ms: int = 1500,
         id_start: int = 0,
+        state_baselines: Mapping[str, BaselineSnapshot] | None = None,
     ) -> None:
         self.cfg = cfg
         self.baseline = baseline
+        self.state_baselines: dict[str, BaselineSnapshot] = dict(state_baselines or {})
         self.subject_id = subject_id
         self.extractor_id = extractor_id
         self.period_us = frame_period_us
@@ -122,8 +171,15 @@ class StreamingDeviationDetector:
         self._k += 1
         return eid
 
+    def _signal_baseline(self, name: str, state: str | None) -> SignalBaseline:
+        if state and state in self.state_baselines:
+            sb = self.state_baselines[state].signals.get(name)
+            if sb is not None and math.isfinite(sb.center) and math.isfinite(sb.scale):
+                return sb
+        return self.baseline.signals[name]
+
     def _event(self, name: str, run: _OpenRun, end_us: int, *, provisional: bool) -> Event:
-        sb = self.baseline.signals[name]
+        sb = self._signal_baseline(name, run.state)
         direction = "increase" if run.peak_z > 0 else "decrease"
         q = float(np.mean(run.qualities)) if run.qualities else 0.0
         return Event(
@@ -157,24 +213,31 @@ class StreamingDeviationDetector:
             quality=q,
             baseline_quality=self.baseline.quality,
             extractor_id=self.extractor_id,
-            tags=[name.split(".", maxsplit=1)[0]] + (["provisional"] if provisional else []),
+            tags=[
+                name.split(".", maxsplit=1)[0],
+                *([run.state] if run.state and run.state in self.state_baselines else []),
+                *(["provisional"] if provisional else []),
+            ],
         )
 
-    def update(self, t_us: int, quality: float, values: Mapping[str, float]) -> list[Event]:
+    def update(
+        self, t_us: int, quality: float, values: Mapping[str, float], *, state: str | None = None
+    ) -> list[Event]:
         out: list[Event] = []
         ok = quality >= self.cfg.min_frame_quality
         self._last_t_us = t_us
         for name in self.cfg.signals:
-            sb = self.baseline.signals.get(name)
-            if sb is None or not math.isfinite(sb.center):
+            base_sb = self.baseline.signals.get(name)
+            if base_sb is None or not math.isfinite(base_sb.center):
                 continue
+            sb = self._signal_baseline(name, state)
             v = float(values.get(name, math.nan))
             z = (v - sb.center) / sb.scale if math.isfinite(v) else math.nan
             valid = ok and math.isfinite(z)
             run = self._open.get(name)
             if run is None:
                 if valid and abs(z) >= self.cfg.z_enter:
-                    self._open[name] = _OpenRun(t_us, t_us, z, v, [quality])
+                    self._open[name] = _OpenRun(t_us, t_us, z, v, [quality], state=state)
             elif not valid or abs(z) < self.cfg.z_exit:
                 end = t_us  # closes at the first non-qualifying frame
                 if end - run.start_us >= self.cfg.min_duration_ms * 1000 and not run.emitted_open:

@@ -42,7 +42,13 @@ change has any particular cause. Known confounds: camera motion, zoom (changes f
 apparent pose), lighting changes, speaking vs. listening, laughing, the question being asked,
 the tracker settling (first frames), and chance excursions in noisy signals.
 
-Robust statistics (median/MAD) tolerate some contamination of the window by such excursions;
+**Speaking is a confound for every mouth signal.** Jaw and lip motion during speech produced
+most of the deviation events in the first real sessions. When the calibration window contains
+enough speech, a separate speaking-state baseline is built and speaking frames are scored
+against it (ADR-013); otherwise mouth-region events during speech are tagged "speaking" with
+halved confidence. Calibrate with both silence and talking.
+
+Robust statistics (median/MAD, trimmed SD for degenerate cases) tolerate some contamination of the window by such excursions;
 they do not make the window representative.
 
 Near-constant signals hit the per-unit *scale floor*; small render/tracker jitter can then

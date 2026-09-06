@@ -1,6 +1,6 @@
 # Project state
 
-Last updated: 2026-09-05 (session 3: browser live capture with audio). Facts only.
+Last updated: 2026-09-05 (session 3: browser live capture, two real webcam sessions, baseline tuning). Facts only.
 
 ## Phase
 
@@ -57,6 +57,23 @@ published as release `models-v1` on the repository; no package release.
 Python >=3.12 + uv/ruff/mypy/pytest , MediaPipe first backend , pinned model manifest , integer
 us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmpeg.
 
+## Findings from the first real webcam sessions (2026-09-06)
+
+* Pipeline held both times: 13.3-13.4 fps analyzed, 0 drops, 21-23 ms inference/latency,
+  audio events fired, sessions saved and opened in the UI.
+* MAD scale collapsed on zero-inflated blendshapes (resting jawOpen MAD 0.004 vs SD 0.12):
+  expressions read 50-80 SD. Fixed with floors measured on the calibration window and a
+  trimmed-SD fallback when the MAD is degenerate (ADR-006 amendment). Replay: max severity
+  81 -> 38; count unchanged (real motion).
+* Speaking dominated mouth signals (123 of 310, then nearly all of 252 events). Now:
+  speaking/silent state baselines from VAD when the window has both (ADR-013), otherwise a
+  "speaking" tag with halved confidence. Calibration instruction: sit quietly AND talk.
+* AU probabilities jitter frame to frame (AU4 0.11-0.49 on a calm face): 5-frame median.
+* Live had no grouping: StreamingEpisodes groups overlapping deviations into episodes; the UI
+  lists episodes first.
+* Event rate on an expressive, talking subject is still hundreds per minute. A calm
+  conversation with a mixed-state calibration is the next measurement.
+
 ## Known limitations / issues
 
 * **`mediapipe==1.0.1` aborts on macOS arm64** (`TensorsToDetectionsCalculator` ->
@@ -100,8 +117,11 @@ See docs/benchmarks.md. M5 Pro CPU: 3.4-3.8 ms/frame landmarker; 20 s clip end-t
    pose signs, blink detection precision, event plausibility; tune floors/thresholds; record.
 2. Phase 3 continued: AU temporal smoothing (probabilities jitter frame to frame), fp16/int8
    ONNX quantization, CUDA benchmark on the RTX 3060 Ti, camera-motion compensation.
-3. UI: browser QA on the live tab with real camera/mic, keyboard scrubbing, session comparison.
-4. Adaptive (anchored, bounded) baseline for long live sessions.
+3. Interview protocol mode: question markers, per-question deviation summaries, response
+   latency, control-vs-relevant comparison, ground-truth harness (per-person AUROC with CIs).
+   Never a lie label.
+4. Calm conversation measurement with mixed-state calibration; per-signal-group thresholds.
+5. Adaptive (anchored, bounded) baseline; UI keyboard scrubbing; session comparison.
 5. Camera-motion compensation / global motion energy so pans and zooms do not read as behavior.
 6. Phase 6: ASR (faster-whisper / whisper.cpp, opt-in), word timings, turn structure and
    response latency; diarization (pyannote, opt-in) or simple speaker clustering.
