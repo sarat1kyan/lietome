@@ -73,6 +73,20 @@ class AudioConfig(BaseModel):
     signals: list[str] = Field(default_factory=lambda: ["voice.f0_hz", "voice.energy_db"])
 
 
+class AdaptiveBaselineConfig(BaseModel):
+    """Bounded tracking of each signal after the calibration window (ADR-014)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    half_life_s: float = Field(default=60.0, gt=0)
+    max_center_shift: float = Field(default=3.0, ge=0, description="In anchor scales")
+    max_scale_ratio: float = Field(default=4.0, ge=1.0)
+    update_z_max: float = Field(
+        default=2.5, gt=0, description="Frames beyond this |z| do not update"
+    )
+
+
 class BaselineConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -81,6 +95,7 @@ class BaselineConfig(BaseModel):
     min_quality: float = Field(default=0.5, ge=0, le=1, description="Frame quality gate")
     min_samples: int = Field(default=60, ge=5, description="Below this, baseline is low quality")
     good_samples: int = Field(default=600, ge=5, description="At/above this, sample-size term = 1")
+    adaptive: AdaptiveBaselineConfig = AdaptiveBaselineConfig()
 
 
 class EventsConfig(BaseModel):

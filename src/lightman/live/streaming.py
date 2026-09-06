@@ -10,7 +10,7 @@ open), and no merge-gap post-processing is applied.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -154,10 +154,13 @@ class StreamingDeviationDetector:
         emit_open_after_ms: int = 1500,
         id_start: int = 0,
         state_baselines: Mapping[str, BaselineSnapshot] | None = None,
+        center_scale: Callable[[str, str], tuple[float, float] | None] | None = None,
     ) -> None:
         self.cfg = cfg
         self.baseline = baseline
         self.state_baselines: dict[str, BaselineSnapshot] = dict(state_baselines or {})
+        self.center_scale = center_scale
+        """Optional (state, signal) -> (center, scale) provider, e.g. an adaptive baseline."""
         self.subject_id = subject_id
         self.extractor_id = extractor_id
         self.period_us = frame_period_us
@@ -172,6 +175,13 @@ class StreamingDeviationDetector:
         return eid
 
     def _signal_baseline(self, name: str, state: str | None) -> SignalBaseline:
+        if self.center_scale is not None:
+            cs = self.center_scale(state or STATE_ALL, name)
+            if cs is None and state:
+                cs = self.center_scale(STATE_ALL, name)
+            if cs is not None:
+                base = self.baseline.signals[name]
+                return base.model_copy(update={"center": cs[0], "scale": cs[1]})
         if state and state in self.state_baselines:
             sb = self.state_baselines[state].signals.get(name)
             if sb is not None and math.isfinite(sb.center) and math.isfinite(sb.scale):

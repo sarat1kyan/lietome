@@ -55,6 +55,11 @@ Near-constant signals hit the per-unit *scale floor*; small render/tracker jitte
 exceed 3 SD. This is visible in the baseline (`floor_applied`) and noted in the report. Treat
 events on floored signals with extra suspicion.
 
+**Adaptation is bounded on purpose.** After calibration each signal tracks the subject slowly
+(half-life 60 s) within limits set by the calibration (ADR-014). A deviation therefore means
+"unusual relative to this person's behavior so far in this session"; slow drifts over minutes
+are partly absorbed and appear in the stored baselines rather than as events.
+
 ## Microexpression spotting
 
 Public benchmarks (CASME II, SAMM, SMIC, CAS(ME)3) are small (16-100 subjects), lab-elicited,

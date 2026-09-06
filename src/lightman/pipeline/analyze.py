@@ -23,6 +23,7 @@ import numpy.typing as npt
 from lightman import __version__
 from lightman.audio.vad import SileroVAD
 from lightman.baseline import BaselineSnapshot, compute_state_baselines
+from lightman.baseline.adaptive import AdaptiveConfig
 from lightman.baseline.robust import STATE_ALL, STATE_SILENT, STATE_SPEAKING
 from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
@@ -98,6 +99,17 @@ def default_au_factory(cfg: LightmanConfig, registry: ModelRegistry) -> AUDetect
         model_id=cfg.au.model,
         model_sha256=registry.get(cfg.au.model).sha256,
         prefer_gpu=cfg.au.prefer_gpu,
+    )
+
+
+def _adaptive_cfg(cfg: LightmanConfig) -> AdaptiveConfig:
+    a = cfg.baseline.adaptive
+    return AdaptiveConfig(
+        enabled=a.enabled,
+        half_life_s=a.half_life_s,
+        max_center_shift=a.max_center_shift,
+        max_scale_ratio=a.max_scale_ratio,
+        update_z_max=a.update_z_max,
     )
 
 
@@ -376,6 +388,7 @@ def analyze_video(
         exclude_intervals=[(b.start_us, b.end_us) for b in blinks],
         state_baselines=state_baselines if frame_state is not None else None,
         frame_state=frame_state,
+        adaptive=_adaptive_cfg(cfg),
     )
     clusters = cluster_cooccurring(
         deviations,

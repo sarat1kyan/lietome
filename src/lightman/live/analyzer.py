@@ -17,7 +17,8 @@ import numpy as np
 import numpy.typing as npt
 
 from lightman import __version__
-from lightman.baseline.robust import STATE_SILENT, STATE_SPEAKING
+from lightman.baseline.adaptive import AdaptiveBaseline
+from lightman.baseline.robust import STATE_ALL, STATE_SILENT, STATE_SPEAKING
 from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
 from lightman.core.logging import get_logger
@@ -38,7 +39,13 @@ from lightman.live.streaming import (
     StreamingEpisodes,
     tag_speaking,
 )
-from lightman.pipeline.analyze import DISCLAIMER, _artifact, _nan_to_none, _new_session_id
+from lightman.pipeline.analyze import (
+    DISCLAIMER,
+    _adaptive_cfg,
+    _artifact,
+    _nan_to_none,
+    _new_session_id,
+)
 from lightman.schema import AnalysisManifest, Event, MediaInfo, OutputArtifact, QualitySummary
 from lightman.schema.media import VideoStreamInfo
 
@@ -122,6 +129,7 @@ class LiveAnalyzer:
         self.has_audio = False
         self.baseline_just_ready = False
         self._au_smooth: dict[str, StreamingMedian] = {}
+        self.adaptive: AdaptiveBaseline | None = None
         """Set by the caller from the audio stream: True while speech is detected."""
 
     @property
@@ -237,6 +245,11 @@ class LiveAnalyzer:
                 state=state,
                 suppress_prefixes=eye_region if self.blinks.eyes_closed else (),
             )
+            if self.adaptive is not None:
+                st = state if state in self.adaptive.states() else STATE_ALL
+                self.adaptive.update(st, t_us, values)
+                if st != STATE_ALL:
+                    self.adaptive.update(STATE_ALL, t_us, values)
         kept = [e for e in new_events if e.start_us >= self._warmup_us]
         if speaking and STATE_SPEAKING not in self.baseline.state_snapshots:
             kept = [tag_speaking(e) for e in kept]  # no speaking baseline: flag articulation
@@ -262,6 +275,9 @@ class LiveAnalyzer:
         dev_cfg = self.cfg.events.model_copy(
             update={"signals": [s for s in self.cfg.events.signals if not s.startswith("eye.")]}
         )
+        bases = {STATE_ALL: snap, **self.baseline.state_snapshots}
+        acfg = _adaptive_cfg(self.cfg)
+        self.adaptive = AdaptiveBaseline(bases, acfg) if acfg.enabled else None
         self.deviation = StreamingDeviationDetector(
             dev_cfg,
             snap,
@@ -270,6 +286,7 @@ class LiveAnalyzer:
             frame_period_us=self.period_us,
             id_start=len(self.events),
             state_baselines=self.baseline.state_snapshots,
+            center_scale=self.adaptive.center_scale if self.adaptive else None,
         )
         self.blinks = StreamingBlinkDetector(
             self.cfg.events,

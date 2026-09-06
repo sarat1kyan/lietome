@@ -24,6 +24,8 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 - Web UI: `lightman serve` (FastAPI, localhost) + Svelte 5 workstation (session rail, video
   stage with local playback, canvas timeline in robust-SD units, evidence panel, quality
   strip); upload-and-analyze endpoint; single-file demo build.
+- Bounded adaptive baseline after calibration (ADR-014): EWMA center/scale per state,
+  anchored to the calibration, offline and live.
 - Calibration v2: 40 s window with a free-talk phase; per-frame `speaking` column in
   features.parquet; per-group entry thresholds (AU and blendshape 4 SD); blink suppression for
   eye-region blendshapes live and partial-overlap blink exclusion offline; replay tool
