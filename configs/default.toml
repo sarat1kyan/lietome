@@ -42,6 +42,13 @@ min_quality = 0.5            # frames below this quality are excluded from the b
 min_samples = 60             # fewer usable frames -> "unreliable" note
 good_samples = 600           # sample-size term saturates here
 
+[baseline.adaptive]          # after calibration, track the subject slowly within bounds (ADR-014)
+enabled = true
+half_life_s = 60.0
+max_center_shift = 3.0       # center may move at most this many anchor scales
+max_scale_ratio = 4.0        # scale may grow to at most this multiple of the anchor scale
+update_z_max = 2.5           # frames beyond this |z| (vs the current baseline) do not update
+
 [events]
 z_enter = 3.0                # |robust z| to open a deviation event
 z_exit = 2.0                 # hysteresis close threshold
