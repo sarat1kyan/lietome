@@ -5,12 +5,13 @@ against it, and since ADR-013 it keeps separate baselines for the silent and spe
 states. The window therefore has to contain both, in known proportions, under the same
 camera, light and framing as the rest of the session.
 
-## Guided live calibration (default, 30 s)
+## Guided live calibration (default, 40 s)
 
 | Phase | Duration | Instruction | State |
 |---|---|---|---|
 | settle | 12 s | Sit as you normally would. Look at the screen. Do not talk. Blink normally. | silent |
-| read | 18 s | Read the passage below aloud at your normal pace and volume. | speaking |
+| read | 14 s | Read the passage below aloud at your normal pace and volume. | speaking |
+| talk | 14 s | Talk freely: describe what you did earlier today, in your own words. | speaking |
 
 The live tab shows the instruction, a countdown and the passage; the speaking state comes
 from the voice activity detector when the microphone is on, and from the phase otherwise.
@@ -18,12 +19,16 @@ from the voice activity detector when the microphone is on, and from the phase o
 ## The passage
 
 Original text, neutral content, varied consonants and vowels, no emotional words, about 55
-words (18 s at an ordinary pace):
+words (14 s at a brisk pace, 18 s at a slow one):
 
 > The morning train leaves at seven and stops twice before the coast. A blue kettle sits
 > on the stove, and the window faces a quiet street with three maple trees. Count the steps
 > from the door to the gate, then name the months from January to June. The weather this
 > week has been mild.
+
+Why a free-talk phase too: the third real session showed that reading is not conversation
+(jaw barely moves, pitch is flat), so a reading-only speaking baseline made ordinary talking
+look deviant. Reading gives a controlled sample; free talk gives the conversational range.
 
 Why a fixed passage: the speaking-state baseline then measures *how this person articulates
 neutral text*, so later differences are not explained by different words. Why neutral: an
