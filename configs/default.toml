@@ -37,7 +37,7 @@ max_frames = 2000000
 
 [baseline]
 mode = "leading_window"      # only mode in V0.1
-window_s = 30.0              # calibration window at the start of the recording
+window_s = 40.0              # calibration window: 12 s quiet, 14 s reading, 14 s free talk (docs/calibration.md)
 min_quality = 0.5            # frames below this quality are excluded from the baseline
 min_samples = 60             # fewer usable frames -> "unreliable" note
 good_samples = 600           # sample-size term saturates here
@@ -61,6 +61,10 @@ signals = [
   "au.AU1", "au.AU2", "au.AU4", "au.AU5", "au.AU6", "au.AU7", "au.AU9", "au.AU10", "au.AU12",
   "au.AU14", "au.AU15", "au.AU17", "au.AU20", "au.AU23", "au.AU24", "au.AU25", "au.AU26",
 ]
+
+[events.z_enter_by_prefix]   # noisier classifier outputs need a higher bar; exit shifts by the same amount
+"au." = 4.0
+"blendshape." = 4.0
 
 [storage]
 store_landmarks = false      # 478x3 per frame is large and biometric; off by default

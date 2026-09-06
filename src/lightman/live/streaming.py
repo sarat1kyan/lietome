@@ -221,7 +221,13 @@ class StreamingDeviationDetector:
         )
 
     def update(
-        self, t_us: int, quality: float, values: Mapping[str, float], *, state: str | None = None
+        self,
+        t_us: int,
+        quality: float,
+        values: Mapping[str, float],
+        *,
+        state: str | None = None,
+        suppress_prefixes: tuple[str, ...] = (),
     ) -> list[Event]:
         out: list[Event] = []
         ok = quality >= self.cfg.min_frame_quality
@@ -233,12 +239,13 @@ class StreamingDeviationDetector:
             sb = self._signal_baseline(name, state)
             v = float(values.get(name, math.nan))
             z = (v - sb.center) / sb.scale if math.isfinite(v) else math.nan
-            valid = ok and math.isfinite(z)
+            valid = ok and math.isfinite(z) and not name.startswith(suppress_prefixes)
+            enter, exit_ = self.cfg.thresholds_for(name)
             run = self._open.get(name)
             if run is None:
-                if valid and abs(z) >= self.cfg.z_enter:
+                if valid and abs(z) >= enter:
                     self._open[name] = _OpenRun(t_us, t_us, z, v, [quality], state=state)
-            elif not valid or abs(z) < self.cfg.z_exit:
+            elif not valid or abs(z) < exit_:
                 end = t_us  # closes at the first non-qualifying frame
                 if end - run.start_us >= self.cfg.min_duration_ms * 1000 and not run.emitted_open:
                     out.append(self._event(name, run, end, provisional=False))
@@ -286,6 +293,10 @@ class StreamingBlinkDetector:
         self._min_ear = math.inf
         self._q: list[float] = []
         self.blink_count = 0
+
+    @property
+    def eyes_closed(self) -> bool:
+        return self._start is not None
 
     def update(self, t_us: int, quality: float, ear: float) -> list[Event]:
         closed = (

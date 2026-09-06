@@ -134,6 +134,7 @@ class LiveAnalyzer:
         cfg = self.cfg
         h, w = rgb.shape[:2]
         self._size = (w, h)
+        speaking_now = self.speaking or bool(self.speaking_hint and not self.has_audio)
         t_inf = time.perf_counter()
         faces = self.landmarker.process(rgb, t_us)
         values: dict[str, float] = {}
@@ -189,6 +190,7 @@ class LiveAnalyzer:
                 eyes=(ear_r, ear_l, ear_mean),
                 blendshapes=face.blendshapes,
                 aus=aus,
+                speaking=speaking_now,
             )
             self.stats.frames_with_face += 1
         else:
@@ -204,6 +206,7 @@ class LiveAnalyzer:
                 head=None,
                 eyes=None,
                 blendshapes=None,
+                speaking=speaking_now,
             )
         self.stats.infer_ms.append((time.perf_counter() - t_inf) * 1000)
         if capture_wall_ns is not None:
@@ -215,7 +218,7 @@ class LiveAnalyzer:
         self._frame_index += 1
 
         new_events: list[Event] = []
-        speaking = self.speaking or bool(self.speaking_hint and not self.has_audio)
+        speaking = speaking_now
         state = STATE_SPEAKING if speaking else STATE_SILENT
         if not self.baseline.ready:
             if self.baseline.update(t_us, quality, values, speaking=speaking):
@@ -223,9 +226,16 @@ class LiveAnalyzer:
                 self.baseline_just_ready = True
         else:
             assert self.deviation is not None and self.blinks is not None  # noqa: S101
-            new_events += self.deviation.update(t_us, quality, values, state=state)
             new_events += self.blinks.update(
                 t_us, quality, values.get("eye.aspect_ratio_mean", float("nan"))
+            )
+            eye_region = ("blendshape.eyeSquint", "blendshape.eyeBlink", "blendshape.eyeWide")
+            new_events += self.deviation.update(
+                t_us,
+                quality,
+                values,
+                state=state,
+                suppress_prefixes=eye_region if self.blinks.eyes_closed else (),
             )
         kept = [e for e in new_events if e.start_us >= self._warmup_us]
         if speaking and STATE_SPEAKING not in self.baseline.state_snapshots:
@@ -247,8 +257,13 @@ class LiveAnalyzer:
         snap = self.baseline.snapshot
         assert snap is not None  # noqa: S101 - set by update()/finalize()
         ext = self.landmarker.provenance.extractor_id
+        # Eye-openness excursions are blinks/closures; the blink detector owns them. The offline
+        # path excludes eye deviations inside blinks; live simply does not score eye.* here.
+        dev_cfg = self.cfg.events.model_copy(
+            update={"signals": [s for s in self.cfg.events.signals if not s.startswith("eye.")]}
+        )
         self.deviation = StreamingDeviationDetector(
-            self.cfg.events,
+            dev_cfg,
             snap,
             subject_id=self.subject_id,
             extractor_id=ext,

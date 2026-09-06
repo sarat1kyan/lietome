@@ -53,7 +53,11 @@ def detect_deviation_events(
     extractor_id: str,
     id_start: int = 0,
     exclude_intervals: list[tuple[int, int]] | None = None,
-    exclude_signal_prefixes: tuple[str, ...] = ("eye.",),
+    exclude_signal_prefixes: tuple[str, ...] = (
+        "eye.",
+        "blendshape.eyeSquint",
+        "blendshape.eyeBlink",
+    ),
     source: str = "video",
     state_baselines: Mapping[str, BaselineSnapshot] | None = None,
     frame_state: npt.NDArray[np.str_] | None = None,
@@ -80,15 +84,16 @@ def detect_deviation_events(
             center_arr = np.full(t_us.shape, sb.center)
             scale_arr = np.full(t_us.shape, sb.scale)
             z = robust_z(signals[name], sb.center, sb.scale)
-        segs = hysteresis_segments(np.abs(z), ok, enter=cfg.z_enter, exit_=cfg.z_exit)
+        enter, exit_ = cfg.thresholds_for(name)
+        segs = hysteresis_segments(np.abs(z), ok, enter=enter, exit_=exit_)
         segs = merge_close_segments(segs, t_us, cfg.merge_gap_ms * 1000)
         for s in segs:
             start = int(t_us[s.start_idx])
             end = segment_end_us(t_us, s.end_idx, period)
             if end - start < cfg.min_duration_ms * 1000:
                 continue
-            if any(start >= a and end <= b for a, b in exclude):
-                continue
+            if any(start < b + 150_000 and end > a - 150_000 for a, b in exclude):
+                continue  # overlaps (with 150 ms margin) an excluded interval, e.g. a blink
             peak_z = float(z[s.peak_idx])
             direction = "increase" if peak_z > 0 else "decrease"
             contrib = FeatureContribution(
