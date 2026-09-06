@@ -8,6 +8,7 @@ from collections.abc import Mapping
 import numpy as np
 import numpy.typing as npt
 
+from lightman.baseline.adaptive import AdaptiveConfig, adaptive_center_scale_arrays
 from lightman.baseline.robust import BaselineSnapshot, per_frame_center_scale, robust_z
 from lightman.config import EventsConfig
 from lightman.events.segments import (
@@ -61,6 +62,7 @@ def detect_deviation_events(
     source: str = "video",
     state_baselines: Mapping[str, BaselineSnapshot] | None = None,
     frame_state: npt.NDArray[np.str_] | None = None,
+    adaptive: AdaptiveConfig | None = None,
 ) -> list[Event]:
     """One OBSERVATION-level event per sustained per-signal excursion.
 
@@ -77,7 +79,20 @@ def detect_deviation_events(
             continue
         exclude = (exclude_intervals or []) if name.startswith(exclude_signal_prefixes) else []
         sb = baseline.signals[name]
-        if state_baselines is not None and frame_state is not None:
+        if adaptive is not None and adaptive.enabled:
+            bases = dict(state_baselines) if state_baselines else {"all": baseline}
+            bases.setdefault("all", baseline)
+            center_arr, scale_arr = adaptive_center_scale_arrays(
+                t_us,
+                signals[name],
+                frame_state,
+                bases,
+                name,
+                adaptive,
+                start_us=baseline.window_end_us,
+            )
+            z = robust_z(signals[name], center_arr, scale_arr)
+        elif state_baselines is not None and frame_state is not None:
             center_arr, scale_arr, _ = per_frame_center_scale(name, state_baselines, frame_state)
             z = robust_z(signals[name], center_arr, scale_arr)
         else:

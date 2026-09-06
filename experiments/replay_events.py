@@ -19,6 +19,7 @@ from lightman.baseline.robust import STATE_ALL, STATE_SILENT, STATE_SPEAKING
 from lightman.config import LightmanConfig
 from lightman.events import cluster_cooccurring, detect_blinks, detect_deviation_events
 from lightman.features.table import SIGNAL_COLUMNS, read_feature_table
+from lightman.pipeline.analyze import _adaptive_cfg
 
 
 def main() -> None:
@@ -55,6 +56,7 @@ def main() -> None:
         exclude_intervals=[(b.start_us, b.end_us) for b in blinks],
         state_baselines=sbs if frame_state is not None else None,
         frame_state=frame_state,
+        adaptive=_adaptive_cfg(cfg),
     )
     clusters = cluster_cooccurring(dev, subject_id="s", extractor_id="replay", id_start=10_000)
     dur_s = (t_us[-1] - baseline.window_end_us) / 1e6 if t_us.size else 0
