@@ -3,10 +3,12 @@ INTERPRETATION-level clusters when several signals deviate at the same time."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 import numpy.typing as npt
 
-from lightman.baseline.robust import BaselineSnapshot, robust_z
+from lightman.baseline.robust import BaselineSnapshot, per_frame_center_scale, robust_z
 from lightman.config import EventsConfig
 from lightman.events.segments import (
     hysteresis_segments,
@@ -53,6 +55,8 @@ def detect_deviation_events(
     exclude_intervals: list[tuple[int, int]] | None = None,
     exclude_signal_prefixes: tuple[str, ...] = ("eye.",),
     source: str = "video",
+    state_baselines: Mapping[str, BaselineSnapshot] | None = None,
+    frame_state: npt.NDArray[np.str_] | None = None,
 ) -> list[Event]:
     """One OBSERVATION-level event per sustained per-signal excursion.
 
@@ -69,7 +73,13 @@ def detect_deviation_events(
             continue
         exclude = (exclude_intervals or []) if name.startswith(exclude_signal_prefixes) else []
         sb = baseline.signals[name]
-        z = robust_z(signals[name], sb.center, sb.scale)
+        if state_baselines is not None and frame_state is not None:
+            center_arr, scale_arr, _ = per_frame_center_scale(name, state_baselines, frame_state)
+            z = robust_z(signals[name], center_arr, scale_arr)
+        else:
+            center_arr = np.full(t_us.shape, sb.center)
+            scale_arr = np.full(t_us.shape, sb.scale)
+            z = robust_z(signals[name], sb.center, sb.scale)
         segs = hysteresis_segments(np.abs(z), ok, enter=cfg.z_enter, exit_=cfg.z_exit)
         segs = merge_close_segments(segs, t_us, cfg.merge_gap_ms * 1000)
         for s in segs:
@@ -85,10 +95,16 @@ def detect_deviation_events(
                 feature=name,
                 unit=sb.unit,
                 peak_value=float(signals[name][s.peak_idx]),
-                baseline_center=sb.center,
-                baseline_scale=sb.scale,
+                baseline_center=float(center_arr[s.peak_idx]),
+                baseline_scale=float(scale_arr[s.peak_idx]),
                 peak_deviation=peak_z,
                 direction=direction,
+            )
+            state_tag = (
+                [str(frame_state[s.peak_idx])]
+                if frame_state is not None
+                and str(frame_state[s.peak_idx]) in state_baselines_keys(state_baselines)
+                else []
             )
             q = float(np.nanmean(quality[s.start_idx : s.end_idx + 1]))
             events.append(
@@ -104,7 +120,10 @@ def detect_deviation_events(
                     label=_label_for(name, direction),
                     description=(
                         f"{name} reached {contrib.peak_value:.3f} {sb.unit} "
-                        f"({peak_z:+.1f} robust SD from baseline median {sb.center:.3f})"
+                        f"({peak_z:+.1f} robust SD from baseline median "
+                        f"{contrib.baseline_center:.3f}"
+                        + (f", {state_tag[0]} state" if state_tag else "")
+                        + ")"
                     ),
                     contributions=[contrib],
                     severity=abs(peak_z),
@@ -112,11 +131,15 @@ def detect_deviation_events(
                     quality=q,
                     baseline_quality=baseline.quality,
                     extractor_id=extractor_id,
-                    tags=[name.split(".")[0]],
+                    tags=[name.split(".")[0], *state_tag],
                 )
             )
             k += 1
     return events
+
+
+def state_baselines_keys(sb: Mapping[str, BaselineSnapshot] | None) -> set[str]:
+    return {k for k in (sb or {}) if k != "all"}
 
 
 def cluster_cooccurring(

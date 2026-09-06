@@ -60,6 +60,10 @@ class BaselineSnapshot(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     mode: str
+    state: str = Field(
+        default="all",
+        description="Behavioral state the baseline describes: 'all', 'silent' or 'speaking'",
+    )
     window_start_us: int
     window_end_us: int
     frames_in_window: int
@@ -105,10 +109,18 @@ def robust_center_scale(x: npt.NDArray[np.floating], unit: str) -> tuple[float, 
     return center, max(scale, floor), n, floored
 
 
-def robust_z(x: npt.NDArray[np.floating], center: float, scale: float) -> npt.NDArray[np.float64]:
-    if not math.isfinite(center) or not math.isfinite(scale) or scale <= 0:
-        return np.full(x.shape, np.nan, dtype=np.float64)
-    return (np.asarray(x, dtype=np.float64) - center) / scale
+def robust_z(
+    x: npt.NDArray[np.floating],
+    center: float | npt.NDArray[np.floating],
+    scale: float | npt.NDArray[np.floating],
+) -> npt.NDArray[np.float64]:
+    """(x - center) / scale; center and scale may be scalars or per-frame arrays."""
+    c = np.asarray(center, dtype=np.float64)
+    sc = np.asarray(scale, dtype=np.float64)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        z = (np.asarray(x, dtype=np.float64) - c) / sc
+    ok = np.isfinite(c) & np.isfinite(sc) & (sc > 0)
+    return np.where(ok, z, np.nan).astype(np.float64)
 
 
 def compute_leading_window_baseline(
@@ -160,3 +172,55 @@ def compute_leading_window_baseline(
         notes=notes,
         signals=per_signal,
     )
+
+
+STATE_ALL = "all"
+STATE_SILENT = "silent"
+STATE_SPEAKING = "speaking"
+
+
+def compute_state_baselines(
+    t_us: npt.NDArray[np.integer],
+    quality: npt.NDArray[np.floating],
+    signals: Mapping[str, npt.NDArray[np.floating]],
+    cfg: BaselineConfig,
+    speaking: npt.NDArray[np.bool_] | None,
+) -> dict[str, BaselineSnapshot]:
+    """Baselines for 'all' frames and, when the window holds enough of each, for the silent
+    and speaking states separately. Speech moves the mouth; comparing a speaking frame with a
+    silent baseline manufactures deviations, so each frame is later scored against the
+    baseline of its own state when one exists.
+    """
+    out = {STATE_ALL: compute_leading_window_baseline(t_us, quality, signals, cfg)}
+    if speaking is None or speaking.shape != t_us.shape:
+        return out
+    for name, mask in ((STATE_SILENT, ~speaking), (STATE_SPEAKING, speaking)):
+        q = np.where(mask, quality, 0.0)
+        snap = compute_leading_window_baseline(t_us, q, signals, cfg)
+        if snap.frames_used >= cfg.min_samples:
+            out[name] = snap.model_copy(update={"state": name})
+    return out
+
+
+def per_frame_center_scale(
+    feature: str,
+    baselines: Mapping[str, BaselineSnapshot],
+    frame_state: npt.NDArray[np.str_] | None,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], SignalBaseline]:
+    """Center/scale arrays aligned with frames: the state-specific baseline where available,
+    the 'all' baseline otherwise. Also returns the 'all' SignalBaseline for reporting."""
+    base = baselines[STATE_ALL].signals[feature]
+    n = frame_state.shape[0] if frame_state is not None else 0
+    center = np.full(n, base.center)
+    scale = np.full(n, base.scale)
+    if frame_state is not None:
+        for state, snap in baselines.items():
+            if state == STATE_ALL or feature not in snap.signals:
+                continue
+            sb = snap.signals[feature]
+            if not (math.isfinite(sb.center) and math.isfinite(sb.scale)):
+                continue
+            m = frame_state == state
+            center[m] = sb.center
+            scale[m] = sb.scale
+    return center, scale, base
