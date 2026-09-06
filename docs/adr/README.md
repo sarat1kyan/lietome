@@ -17,3 +17,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 010 | Live mode: bounded queue, streaming detectors, same outputs | accepted |
 | 011 | Web UI: FastAPI + Svelte 5 workstation | accepted |
 | 012 | Browser live capture over WebSocket | accepted |
+| 013 | Speaking/silent state baselines and AU smoothing | accepted |

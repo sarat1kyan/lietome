@@ -77,8 +77,9 @@ uv run lightman live --au               # adds the fast AU model (resnet18), sti
 uv run lightman live --source clip.mp4  # replay a file at real-time pace (no camera needed)
 ```
 
-Baseline is calibrated on the first 30 s; deviation and blink events print as they happen and
-a normal session directory is written when you press q. Frames are never saved.
+Baseline is calibrated on the first 30 s: sit normally for part of it and talk for part of it,
+so silent and speaking states each get a baseline. Deviation and blink events print as they
+happen and a normal session directory is written when you press q. Frames are never saved.
 
 ## What it does not do (yet, or ever)
 

@@ -24,6 +24,11 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 - Web UI: `lightman serve` (FastAPI, localhost) + Svelte 5 workstation (session rail, video
   stage with local playback, canvas timeline in robust-SD units, evidence panel, quality
   strip); upload-and-analyze endpoint; single-file demo build.
+- Speaking/silent state baselines (ADR-013) and 5-frame median smoothing of AU probabilities;
+  `state_baselines.json`; audio stage runs before the video baseline.
+- Baseline scale: measured floors, trimmed-SD fallback for degenerate MAD; live episodes
+  (grouped deviations); "speaking" tag on mouth-region events during speech;
+  `experiments/replay_events.py` to re-run detection on saved features.
 - Browser live tab: getUserMedia capture streamed over `WS /api/live`, shared LiveAnalyzer,
   streaming audio analyzer (VAD + YIN, voiced-gated baseline), landmark overlay, event feed.
 - `lightman live`: webcam or real-time file replay, bounded drop-oldest queue, streaming

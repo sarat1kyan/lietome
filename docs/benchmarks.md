@@ -65,6 +65,18 @@ Command: `uv run lightman analyze samples/portrait_kenburns_20s.mp4 -o output/` 
 Latency = capture to end of analysis; the queue (size 2) keeps it bounded when the model is
 slower than the frame period, at the cost of dropped frames.
 
+## First real webcam sessions (browser live tab, M5 Pro, 2026-09-06)
+
+Session 1: 99 s, 640 px frames at 15 fps client target: 1321 frames analyzed, 13.3 fps, 0
+dropped, inference p50 21 ms (landmarks + AU resnet18), 25 blinks, 3 voice events. Baseline
+used 400 frames (quality 0.67). MAD-only scale: 310 deviation events in 69 s, max severity
+81 SD. Replayed with measured floors and the trimmed-SD fallback: 313 events, max 38 SD, 32
+episodes (the count is real motion of an expressive subject; the SD inflation was the bug).
+
+Session 2: 79 s, 13.4 fps, latency p50 23 ms (receive to analyzed), 0 dropped, 9 blinks:
+252 deviations, 17 episodes, nearly all tagged speaking; AU4 spanned 0.11-0.49 on a calm
+face. Motivated ADR-013 (state baselines, AU smoothing).
+
 ## Not yet measured
 
 CUDA/RTX 3060 Ti anything; end-to-end at 1080p/4K; memory footprint over long recordings;
