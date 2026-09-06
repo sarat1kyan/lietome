@@ -24,6 +24,10 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 - Web UI: `lightman serve` (FastAPI, localhost) + Svelte 5 workstation (session rail, video
   stage with local playback, canvas timeline in robust-SD units, evidence panel, quality
   strip); upload-and-analyze endpoint; single-file demo build.
+- Calibration v2: 40 s window with a free-talk phase; per-frame `speaking` column in
+  features.parquet; per-group entry thresholds (AU and blendshape 4 SD); blink suppression for
+  eye-region blendshapes live and partial-overlap blink exclusion offline; replay tool
+  rebuilds state baselines from the speaking column.
 - Guided live calibration: 12 s settle + 18 s reading a fixed neutral passage, on-screen
   countdown, baseline-ready summary with per-state frame counts (docs/calibration.md).
 - Speaking/silent state baselines (ADR-013) and 5-frame median smoothing of AU probabilities;

@@ -77,6 +77,14 @@ Session 2: 79 s, 13.4 fps, latency p50 23 ms (receive to analyzed), 0 dropped, 9
 252 deviations, 17 episodes, nearly all tagged speaking; AU4 spanned 0.11-0.49 on a calm
 face. Motivated ADR-013 (state baselines, AU smoothing).
 
+Session 3: 3 min 18 s, guided calibration (12 s quiet + 18 s reading), then free conversation:
+2635 frames, 13.3 fps, latency 23 ms, 0 dropped, 78 blinks, 12 voice events, two-state baseline
+(silent 207 / speaking 194 frames). 1070 deviations (381/min), 69 episodes (25/min). Of 70
+eye-openness events 61 overlapped a blink; of 165 eyeSquint events 131 did (live path lacked
+blink exclusion). Calibration jawOpen p90 0.03 vs 0.20 in conversation: reading is not
+talking. Led to the free-talk phase, per-group thresholds and blink suppression for eye-region
+signals.
+
 ## Not yet measured
 
 CUDA/RTX 3060 Ti anything; end-to-end at 1080p/4K; memory footprint over long recordings;

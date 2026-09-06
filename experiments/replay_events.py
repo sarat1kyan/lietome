@@ -14,7 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
-from lightman.baseline import compute_leading_window_baseline
+from lightman.baseline import compute_state_baselines
+from lightman.baseline.robust import STATE_ALL, STATE_SILENT, STATE_SPEAKING
 from lightman.config import LightmanConfig
 from lightman.events import cluster_cooccurring, detect_blinks, detect_deviation_events
 from lightman.features.table import SIGNAL_COLUMNS, read_feature_table
@@ -27,7 +28,12 @@ def main() -> None:
     t_us = cols["t_us"].astype(np.int64)
     quality = cols["quality"].astype(np.float64)
     signals = {n: cols[n].astype(np.float64) for n in SIGNAL_COLUMNS if n in cols}
-    baseline = compute_leading_window_baseline(t_us, quality, signals, cfg.baseline)
+    speaking = cols["speaking"].astype(bool) if "speaking" in cols else None
+    sbs = compute_state_baselines(t_us, quality, signals, cfg.baseline, speaking)
+    baseline = sbs[STATE_ALL]
+    frame_state = None
+    if speaking is not None and STATE_SPEAKING in sbs:
+        frame_state = np.where(speaking, STATE_SPEAKING, STATE_SILENT).astype(str)
     blinks = detect_blinks(
         t_us=t_us,
         quality=quality,
@@ -47,13 +53,16 @@ def main() -> None:
         extractor_id="replay",
         id_start=len(blinks),
         exclude_intervals=[(b.start_us, b.end_us) for b in blinks],
+        state_baselines=sbs if frame_state is not None else None,
+        frame_state=frame_state,
     )
     clusters = cluster_cooccurring(dev, subject_id="s", extractor_id="replay", id_start=10_000)
     dur_s = (t_us[-1] - baseline.window_end_us) / 1e6 if t_us.size else 0
     print(
         f"frames {t_us.size}, post-baseline {dur_s:.0f} s, baseline quality {baseline.quality:.2f}"
     )
-    print(f"blinks {len(blinks)}, deviation events {len(dev)}, clusters {len(clusters)}")
+    print(f"states: {sorted(sbs)}; blinks {len(blinks)}")
+    print(f"deviation events {len(dev)}, clusters {len(clusters)}")
     print(f"events per minute after baseline: {60 * len(dev) / max(dur_s, 1):.1f}")
     sev = np.array([e.severity for e in dev]) if dev else np.zeros(0)
     if sev.size:

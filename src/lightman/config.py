@@ -77,7 +77,7 @@ class BaselineConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     mode: str = Field(default="leading_window", pattern="^(leading_window)$")
-    window_s: float = Field(default=30.0, gt=0, description="Calibration window length")
+    window_s: float = Field(default=40.0, gt=0, description="Calibration window length")
     min_quality: float = Field(default=0.5, ge=0, le=1, description="Frame quality gate")
     min_samples: int = Field(default=60, ge=5, description="Below this, baseline is low quality")
     good_samples: int = Field(default=600, ge=5, description="At/above this, sample-size term = 1")
@@ -88,6 +88,10 @@ class EventsConfig(BaseModel):
 
     z_enter: float = Field(default=3.0, gt=0, description="|robust z| to open an event")
     z_exit: float = Field(default=2.0, gt=0, description="|robust z| to close (hysteresis)")
+    z_enter_by_prefix: dict[str, float] = Field(
+        default_factory=lambda: {"au.": 4.0, "blendshape.": 4.0},
+        description="Higher entry thresholds for noisy classifier outputs; exit shifts alike",
+    )
     min_duration_ms: int = Field(default=120, ge=0)
     merge_gap_ms: int = Field(default=200, ge=0)
     min_frame_quality: float = Field(default=0.4, ge=0, le=1)
@@ -130,6 +134,14 @@ class EventsConfig(BaseModel):
         ]
     )
     blink_ear_threshold: float = Field(default=0.21, gt=0, description="EAR closed threshold")
+
+    def thresholds_for(self, signal: str) -> tuple[float, float]:
+        """(enter, exit) for a signal, honoring prefix overrides."""
+        for prefix, enter in self.z_enter_by_prefix.items():
+            if signal.startswith(prefix):
+                return enter, self.z_exit + (enter - self.z_enter)
+        return self.z_enter, self.z_exit
+
     blink_min_ms: int = Field(default=50, ge=0)
     blink_max_ms: int = Field(default=500, ge=0)
 

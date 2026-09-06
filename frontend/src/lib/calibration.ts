@@ -6,7 +6,8 @@ export const PASSAGE =
 
 export const PHASES: Phase[] = [
   { name: 'settle', seconds: 12, speaking: false, instruction: 'Sit as you normally would. Look at the screen. Do not talk. Blink normally.' },
-  { name: 'read', seconds: 18, speaking: true, instruction: 'Read the passage aloud at your normal pace and volume.' },
+  { name: 'read', seconds: 14, speaking: true, instruction: 'Read the passage aloud at your normal pace and volume.' },
+  { name: 'talk', seconds: 14, speaking: true, instruction: 'Now talk freely: describe what you did earlier today, in your own words, until the timer ends.' },
 ]
 
 export const CALIBRATION_SECONDS = PHASES.reduce((a, p) => a + p.seconds, 0)

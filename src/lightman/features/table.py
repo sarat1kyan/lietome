@@ -48,6 +48,7 @@ META_COLUMNS: tuple[str, ...] = (
     "face.bbox_x1",
     "face.bbox_y1",
     "face.width_px",
+    "speaking",
 )
 SIGNAL_COLUMNS: tuple[str, ...] = HEAD_COLUMNS + EYE_COLUMNS + BLENDSHAPE_COLUMNS + AU_COLUMNS
 FEATURE_COLUMNS: tuple[str, ...] = META_COLUMNS + SIGNAL_COLUMNS
@@ -95,6 +96,7 @@ class FeatureTableBuilder:
         eyes: Sequence[float] | None,
         blendshapes: dict[str, float] | None,
         aus: Sequence[float] | npt.NDArray[np.floating] | None = None,
+        speaking: bool = False,
     ) -> None:
         c = self._cols
         c["frame_index"].append(frame_index)
@@ -110,6 +112,7 @@ class FeatureTableBuilder:
         c["face.bbox_x1"].append(x1)
         c["face.bbox_y1"].append(y1)
         c["face.width_px"].append(face_width_px)
+        c["speaking"].append(speaking)
         hv = list(head) if head is not None else [math.nan] * len(HEAD_COLUMNS)
         for name, v in zip(HEAD_COLUMNS, hv, strict=True):
             c[name].append(v)
@@ -122,6 +125,11 @@ class FeatureTableBuilder:
         for name, v in zip(AU_COLUMNS, av, strict=True):
             c[name].append(v)
 
+    def set_column(self, name: str, values: Sequence[bool] | npt.NDArray[np.bool_]) -> None:
+        if name not in self._cols or len(values) != len(self):
+            raise ValueError(f"cannot set column {name}")
+        self._cols[name] = [bool(v) for v in values]
+
     def __len__(self) -> int:
         return len(self._cols["t_us"])
 
@@ -132,7 +140,7 @@ class FeatureTableBuilder:
                 out[name] = np.asarray(values, dtype=np.int32)
             elif name == "t_us":
                 out[name] = np.asarray(values, dtype=np.int64)
-            elif name in ("timestamp_estimated", "face_present"):
+            elif name in ("timestamp_estimated", "face_present", "speaking"):
                 out[name] = np.asarray(values, dtype=np.bool_)
             else:
                 out[name] = np.asarray(values, dtype=np.float32)

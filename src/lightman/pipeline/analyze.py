@@ -340,6 +340,9 @@ def analyze_video(
         speaking_mask = np.zeros(t_us.shape, dtype=bool)
         for seg in audio.segments:
             speaking_mask |= (t_us >= seg.start_us) & (t_us < seg.end_us)
+    if speaking_mask is not None:
+        cols["speaking"] = speaking_mask
+        builder.set_column("speaking", speaking_mask)
     state_baselines = compute_state_baselines(t_us, quality, signals, cfg.baseline, speaking_mask)
     baseline = state_baselines[STATE_ALL]
     if speaking_mask is not None:
