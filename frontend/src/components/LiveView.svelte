@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { tc } from '../lib/api'
-  import { LiveSession, listCameras, type LiveFrameMsg, type LiveMsg } from '../lib/live'
+  import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg } from '../lib/live'
+  import { CALIBRATION_SECONDS, PASSAGE, phaseAt } from '../lib/calibration'
   import type { LmEvent } from '../lib/types'
 
   let { ondone }: { ondone: (sessionId: string) => void } = $props()
@@ -21,6 +22,9 @@
   let session: LiveSession | null = null
   let sessionId = $state<string | null>(null)
   let showAll = $state(false)
+  let calib = $state<{ name: string; instruction: string; remaining: number; speaking: boolean } | null>(null)
+  let baselineInfo = $state<LiveBaselineMsg | null>(null)
+  let lastPhaseSpeaking: boolean | null = null
   const shown = $derived(showAll ? events : events.filter((e) => e.event_type === 'episode' || e.source === 'audio'))
   const sev = (v: number) => (v > 20 ? '>20' : v.toFixed(1))
 
@@ -44,6 +48,13 @@
   function onmessage(m: LiveMsg) {
     if (m.type === 'frame') {
       last = m
+      if (!m.baseline_ready) {
+        const ph = phaseAt(m.t_us / 1e6)
+        calib = ph ? { name: ph.phase.name, instruction: ph.phase.instruction, remaining: ph.remaining, speaking: ph.phase.speaking } : { name: 'finishing', instruction: 'Hold on, computing the baseline.', remaining: 0, speaking: false }
+        if (ph && ph.phase.speaking !== lastPhaseSpeaking) { lastPhaseSpeaking = ph.phase.speaking; session?.setPhase(ph.phase.speaking) }
+      } else if (calib) {
+        calib = null
+      }
       for (const n of LANES) push(n, m.t_us, m.values[n])
       drawOverlay(m); drawLanes(m.t_us)
     } else if (m.type === 'audio') {
@@ -51,6 +62,8 @@
       push('voice.f0_hz', m.t_us, m.f0_hz); push('voice.energy_db', m.t_us, m.energy_db)
     } else if (m.type === 'events') {
       events = [...m.events.filter((e: LmEvent) => e.event_type !== 'blink'), ...events].slice(0, 300)
+    } else if (m.type === 'baseline') {
+      baselineInfo = m
     } else if (m.type === 'session') {
       sessionId = m.session_id
     }
@@ -121,7 +134,7 @@
 
   async function start() {
     if (!videoEl) return
-    events = []; sessionId = null; audioLast = null; last = null
+    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
       au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72,
@@ -156,6 +169,20 @@
       <canvas bind:this={overlay} class="overlay"></canvas>
       {#if state === 'running'}
         <div class="badge"><span class="dot"></span> LIVE ANALYSIS. frames analyzed in memory, not stored.</div>
+      {/if}
+      {#if calib}
+        <div class="calib">
+          <div class="calib-hdr"><span class="eyebrow">calibration {calib.name}</span><span class="mono">{Math.ceil(calib.remaining)} s</span></div>
+          <div class="calib-bar"><i style="width:{Math.min(100, 100 * (1 - calib.remaining / CALIBRATION_SECONDS))}%"></i></div>
+          <p class="instr">{calib.instruction}</p>
+          {#if calib.speaking}<p class="passage">{PASSAGE}</p>{/if}
+        </div>
+      {:else if baselineInfo && last && last.t_us < (CALIBRATION_SECONDS + 8) * 1e6}
+        <div class="calib done">
+          <span class="eyebrow">baseline ready</span>
+          <p class="instr mono">{baselineInfo.frames_used} frames, quality {baselineInfo.quality.toFixed(2)}{#each Object.entries(baselineInfo.states) as [k, v]} / {k} {v.frames_used}{/each}</p>
+          {#if !baselineInfo.states.speaking}<p class="instr warn">no speaking-state baseline: mouth events while talking will be tagged, not scored fairly</p>{/if}
+        </div>
       {/if}
       {#if last}
         <div class="readout mono">
@@ -193,6 +220,14 @@
   .overlay { position: absolute; inset: 0; pointer-events: none; }
   .badge { position: absolute; top: 10px; left: 12px; display: flex; gap: 8px; align-items: center; background: rgba(5,7,10,0.7); border: 1px solid var(--warn); color: var(--text); padding: 4px 10px; font-size: 11.5px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+  .calib { position: absolute; left: 12px; right: 12px; top: 44px; max-width: 720px; margin: 0 auto; background: rgba(5,7,10,0.82); border: 1px solid var(--accent); padding: 12px 16px; }
+  .calib.done { border-color: var(--ok); }
+  .calib-hdr { display: flex; justify-content: space-between; align-items: baseline; }
+  .calib-bar { height: 4px; background: var(--line); margin: 6px 0 10px; }
+  .calib-bar i { display: block; height: 100%; background: var(--accent); }
+  .instr { margin: 0 0 8px; font-size: 14px; }
+  .instr.warn { color: var(--warn); font-size: 12px; }
+  .passage { margin: 0; font-size: 19px; line-height: 1.5; color: var(--text); font-family: var(--font-ui); text-wrap: pretty; }
   .readout { position: absolute; right: 12px; bottom: 10px; text-align: right; background: rgba(5,7,10,0.65); padding: 6px 10px; font-size: 11.5px; line-height: 1.5; }
   .side { border-left: 1px solid var(--line); background: var(--panel); padding: 10px 14px; overflow-y: auto; min-height: 0; }
   ul { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; }
