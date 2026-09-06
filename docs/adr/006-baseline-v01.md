@@ -12,6 +12,15 @@ too few samples, and floored scales. Everything is persisted in `baseline.json`.
 models / autoencoders (no data to validate; opaque), fully adaptive online baselines (drift risk
 without anchoring).
 
+**Amendment (2026-09-06).** The first real webcam session showed the MAD collapsing on
+zero-inflated signals (resting jawOpen: MAD 0.004, SD 0.12) so ordinary expressions read 50-80
+SD. Floors are now measured from that calibration window (coefficient 0.03, probability 0.05,
+deg 1.0, ratio 0.01) and a trimmed-SD fallback rescues degenerate signals while the MAD keeps
+its contamination resistance elsewhere. Replay of the same session: max severity 81 -> 38 SD;
+event count barely changed (310 -> 313) because the subject really was moving. Speaking is the
+next confound: mouth signals during
+detected speech are tagged "speaking" with halved confidence, pending a speaking-state baseline.
+
 **Consequences.** The window is a calibration convenience, not a psychological claim - the
 report says so. Floored signals produce over-sensitive events; flagged. Next: anchored +
 bounded adaptive baseline for live mode; question-aware segmentation when speech timing exists.
