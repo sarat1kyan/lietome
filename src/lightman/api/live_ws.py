@@ -39,6 +39,22 @@ log = get_logger(__name__)
 MAX_FRAME_BYTES = 4 * 1024 * 1024
 MAX_AUDIO_SAMPLES = 16_000 * 5
 LANDMARK_STRIDE = 1  # send all 478 points (x, y) rounded to 4 decimals
+LANE_SIGNALS = [
+    "head.yaw_deg",
+    "head.pitch_deg",
+    "head.speed_deg_s",
+    "gaze.horizontal",
+    "eye.aspect_ratio_mean",
+    "blendshape.browInnerUp",
+    "blendshape.browDownLeft",
+    "blendshape.jawOpen",
+    "asym.mouth_smile",
+    "au.AU4",
+    "au.AU12",
+    "au.AU24",
+    "voice.f0_hz",
+    "voice.energy_db",
+]
 
 LandmarkerFactory = Callable[[LightmanConfig, ModelRegistry], FaceLandmarker]
 AUFactory = Callable[[LightmanConfig, ModelRegistry], AUDetector]
@@ -73,6 +89,7 @@ async def live_endpoint(
     landmarker: FaceLandmarker | None = None
     au: AUDetector | None = None
     ended_by = "disconnect"
+    last_baseline_push = 0.0
     try:
         while True:
             msg = await ws.receive()
@@ -160,7 +177,9 @@ async def live_endpoint(
                 shown = {
                     k: round(v, 4)
                     for k, v in res.values.items()
-                    if k.startswith(("head.", "eye.", "au.")) or k in cfg.events.signals
+                    if k.startswith(("head.", "eye.", "au.", "gaze.", "asym."))
+                    or k in cfg.events.signals
+                    or k in LANE_SIGNALS
                 }
                 await ws.send_text(
                     json.dumps(
@@ -195,6 +214,18 @@ async def live_endpoint(
                                 "frames_used": snap.frames_used if snap else 0,
                                 "quality": round(snap.quality, 2) if snap else 0.0,
                                 "states": states,
+                                "signals": analyzer.baseline_view(LANE_SIGNALS),
+                            }
+                        )
+                    )
+                    last_baseline_push = time.monotonic()
+                elif res.baseline_ready and time.monotonic() - last_baseline_push > 2.0:
+                    last_baseline_push = time.monotonic()
+                    await ws.send_text(
+                        json.dumps(
+                            {
+                                "type": "baseline_update",
+                                "signals": analyzer.baseline_view(LANE_SIGNALS),
                             }
                         )
                     )

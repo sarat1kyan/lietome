@@ -8,6 +8,7 @@ session artifacts as the prerecorded pipeline.
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,10 +24,18 @@ from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
 from lightman.core.logging import get_logger
 from lightman.core.timebase import utc_now_iso
+from lightman.events.blinkrate import blink_rate_events
 from lightman.events.blinks import blink_threshold
 from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
 from lightman.features.action_units import OPENGRAPHAU_NAMES
+from lightman.features.derived import (
+    asymmetry_from_blendshapes,
+    frame_quality_terms,
+    gaze_from_blendshapes,
+    head_speed_deg_s,
+    image_quality_factor,
+)
 from lightman.features.eyes import eye_aspect_ratios
 from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
@@ -46,6 +55,7 @@ from lightman.pipeline.analyze import (
     _nan_to_none,
     _new_session_id,
 )
+from lightman.report.narrative import build_narrative
 from lightman.schema import AnalysisManifest, Event, MediaInfo, OutputArtifact, QualitySummary
 from lightman.schema.media import VideoStreamInfo
 
@@ -130,6 +140,8 @@ class LiveAnalyzer:
         self.baseline_just_ready = False
         self._au_smooth: dict[str, StreamingMedian] = {}
         self.adaptive: AdaptiveBaseline | None = None
+        self._prev_head: tuple[float, float, float] | None = None
+        self._prev_t_us: int | None = None
         """Set by the caller from the audio stream: True while speech is detected."""
 
     @property
@@ -170,7 +182,28 @@ class LiveAnalyzer:
             ear_mean = float(np.nanmean([ear_r, ear_l]))
             values["eye.aspect_ratio_mean"] = ear_mean
             values.update({f"blendshape.{k}": v for k, v in face.blendshapes.items()})
-            quality = face_quality(width_px, yaw, pitch)
+            gz_h, gz_v = gaze_from_blendshapes(face.blendshapes)
+            as_b, as_s = asymmetry_from_blendshapes(face.blendshapes)
+            cur_head = (yaw or 0.0, pitch or 0.0, head[2] if head else 0.0)
+            speed = head_speed_deg_s(
+                self._prev_head,
+                cur_head,
+                t_us - self._prev_t_us if self._prev_t_us is not None else 0,
+            )
+            self._prev_head, self._prev_t_us = cur_head, t_us
+            values.update(
+                {
+                    "gaze.horizontal": gz_h,
+                    "gaze.vertical": gz_v,
+                    "asym.brow_lower": as_b,
+                    "asym.mouth_smile": as_s,
+                    "head.speed_deg_s": speed,
+                }
+            )
+            blur, luma = frame_quality_terms(
+                rgb, (bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
+            )
+            quality = face_quality(width_px, yaw, pitch) * image_quality_factor(blur, luma)
             aus = None
             if (
                 self.au_detector is not None
@@ -199,6 +232,9 @@ class LiveAnalyzer:
                 blendshapes=face.blendshapes,
                 aus=aus,
                 speaking=speaking_now,
+                derived=(gz_h, gz_v, as_b, as_s, speed),
+                blur=blur,
+                luma=luma,
             )
             self.stats.frames_with_face += 1
         else:
@@ -301,6 +337,22 @@ class LiveAnalyzer:
             "live_baseline_ready", frames_used=snap.frames_used, quality=round(snap.quality, 2)
         )
 
+    def baseline_view(self, signals: list[str]) -> dict[str, dict[str, float]]:
+        """Current (adaptive when available) center/scale per signal for the 'all' state."""
+        out: dict[str, dict[str, float]] = {}
+        snap = self.baseline.snapshot
+        if snap is None:
+            return out
+        for name in signals:
+            cs = self.adaptive.center_scale(STATE_ALL, name) if self.adaptive else None
+            if cs is None:
+                sb = snap.signals.get(name)
+                if sb is None or not (math.isfinite(sb.center) and math.isfinite(sb.scale)):
+                    continue
+                cs = (sb.center, sb.scale)
+            out[name] = {"center": round(cs[0], 5), "scale": round(cs[1], 5)}
+        return out
+
     def finish(self, out_dir: Path, *, ended_by: str = "stop") -> Path:
         """Flush detectors and write the session directory. Idempotent."""
         if self._closed:
@@ -311,6 +363,18 @@ class LiveAnalyzer:
             self.events.extend(flushed)
             self.events.extend(self.episodes.add(flushed, self._last_t or 0))
         self.events.extend(self.episodes.flush())
+        if self.blinks is not None and self.baseline.snapshot is not None:
+            self.events.extend(
+                blink_rate_events(
+                    [e.start_us for e in self.events if e.event_type == "blink"],
+                    start_us=self.baseline.snapshot.window_end_us,
+                    end_us=self._last_t or 0,
+                    subject_id=self.subject_id,
+                    extractor_id=self.landmarker.provenance.extractor_id,
+                    baseline_quality=self.baseline.snapshot.quality,
+                    id_start=400_000,
+                )
+            )
         if not self.baseline.ready:
             self.baseline.finalize()
         snap = self.baseline.snapshot
@@ -350,7 +414,7 @@ class LiveAnalyzer:
         live_stats = self.stats.summary()
         live_stats["ended_by"] = ended_by
         live_stats["blink_count"] = self.blinks.blink_count if self.blinks else 0
-        analysis = {
+        analysis: dict[str, Any] = {
             "session_id": self.session_id,
             "mode": "live",
             "source": self.source_description,
@@ -391,6 +455,20 @@ class LiveAnalyzer:
             baseline_window_us=(0, snap.window_end_us),
             notes=notes,
         )
+        analysis["narrative"] = build_narrative(
+            duration_us=analysis["duration_us"],
+            quality=quality_summary.model_dump(mode="json"),
+            baseline=snap.model_dump(mode="json"),
+            state_baselines={
+                k: v.model_dump(mode="json") for k, v in self.baseline.state_snapshots.items()
+            },
+            events=self.events,
+            audio=None,
+            mode="live",
+        )
+        (session_dir / "analysis.json").write_text(json.dumps(_nan_to_none(analysis), indent=2))
+        outputs = [o for o in outputs if o.name != "analysis.json"]
+        outputs.append(_artifact(session_dir / "analysis.json", "json"))
         if self.cfg.storage.write_report and n:
             from lightman.report.html import render_report
 
