@@ -1,6 +1,6 @@
 # Project state
 
-Last updated: 2026-09-05 (session 4: enhancements pass, network access). Facts only.
+Last updated: 2026-09-05 (session 4: enhancements pass, network access, protocol mode). Facts only.
 
 ## Phase
 
@@ -36,6 +36,10 @@ published as release `models-v1` on the repository; no package release.
   over the WebSocket; first real webcam run happened on the maintainer's machine via the CLI.
 * Guided calibration in the live tab (settle 12 s, read passage 18 s) with phase hints to the
   server and a baseline-ready summary; protocol in docs/calibration.md.
+* Interview protocol mode (ADR-016): script, ask/end/note markers, protocol.json per-question
+  summaries (latency, speech, deviations, episodes, top signals, blink rate, pitch), category
+  comparison with permutation p, experimental AUROC against expected classes, UI table and
+  timeline spans, narrative lines. Live only; prerecorded marker files later.
 * Network serving with token + self-signed TLS (ADR-015). Derived signals (gaze proxy,
   asymmetry, head speed), blur/luma quality terms, blink-rate change events, templated
   narrative (analysis.json, report, UI summary card), live SD lanes with adaptive baseline
@@ -130,9 +134,8 @@ See docs/benchmarks.md. M5 Pro CPU: 3.4-3.8 ms/frame landmarker; 20 s clip end-t
    pose signs, blink detection precision, event plausibility; tune floors/thresholds; record.
 2. Phase 3 continued: AU temporal smoothing (probabilities jitter frame to frame), fp16/int8
    ONNX quantization, CUDA benchmark on the RTX 3060 Ti, camera-motion compensation.
-3. Interview protocol mode: question markers, per-question deviation summaries, response
-   latency, control-vs-relevant comparison, ground-truth harness (per-person AUROC with CIs).
-   Never a lie label.
+3. Protocol mode follow-ups: prerecorded marker files, bootstrap intervals for the
+   comparison, question-aware baselines.
 4. Measure a conversation with the adaptive baseline; tune bounds/half-life via
    experiments/replay_events.py on stored sessions.
 5. Adaptive (anchored, bounded) baseline; UI keyboard scrubbing; session comparison.

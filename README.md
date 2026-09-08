@@ -65,6 +65,15 @@ browser), timeline lanes in robust-SD units with an event strip, and an evidence
 contributors and confidence. `npm run build:demo` produces a single HTML file with one session
 inlined for sharing a look without a server.
 
+### Interview protocol (live tab, "protocol")
+
+Write questions one per line (`C:` control, `R:` relevant, `N:` neutral, optional `[truth]`
+or `[lie]` expected class), press **ask next** (or `n`) as you read each aloud, **end answer**
+when the subject stops. The session gets a per-question table: response latency, speech time,
+deviations per minute, strongest signals, blink rate, pitch shift, plus a control-vs-relevant
+comparison with a permutation p-value and, when expected classes are given, an AUROC. All of
+it is descriptive; no question is ever labelled a lie (ADR-016).
+
 ### Live webcam
 
 In the web UI, open the **live** tab: the browser asks for camera/microphone permission,

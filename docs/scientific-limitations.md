@@ -98,6 +98,15 @@ cannot, from behavior alone); avoid deterministic output; document dataset, cult
 demographic limits; expose calibration, false-positive and false-negative rates. Until such a
 module exists with evidence, Lightman's ceiling is *behavioral deviation analysis*.
 
+## Interview protocol
+
+The protocol mode (ADR-016) times questions and summarizes behavior per question and per
+category. Differences between relevant and control questions have many causes besides any
+psychological state: harder or longer questions, the order they came in, fatigue, the
+interviewer's tone. The permutation p-value and the AUROC against the operator's expected
+answer classes are descriptive statistics for one person and one session with a handful of
+questions; they are not validation and never justify a per-question verdict.
+
 ## Population and fairness
 
 Face models can perform differently across skin tones, ages, facial hair, glasses, and
