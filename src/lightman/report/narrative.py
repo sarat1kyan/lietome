@@ -130,3 +130,42 @@ def build_narrative(
         "do not identify emotions, intent or truthfulness."
     )
     return lines
+
+
+def protocol_narrative(protocol: Any) -> list[str]:
+    """Sentences for an interview protocol summary (ProtocolSummary or its dict form)."""
+    d = protocol if isinstance(protocol, dict) else protocol.model_dump(mode="json")
+    qs = d.get("questions", [])
+    if not qs:
+        return []
+    lines = [f"{len(qs)} questions were marked."]
+    for q in qs:
+        rl = q.get("response_latency_ms")
+        lat = f"answered after {rl:.0f} ms" if rl is not None else "no speech onset detected"
+        top = ", ".join(_human_signal(t["feature"]) for t in q.get("top_signals", [])[:2]) or "none"
+        lines.append(
+            f"Q{q['id'].lstrip('q')} ({q['category']}): {lat}; {q['deviations']} deviations "
+            f"({q['deviations_per_min']:.0f}/min), strongest {q['max_severity']:.0f} SD; "
+            f"signals: {top}."
+        )
+    cvr = d.get("control_vs_relevant") or {}
+    if cvr.get("delta_deviations_per_min") is not None:
+        p = cvr.get("permutation_p_deviations")
+        ptxt = f", permutation p = {p:.2f}" if p is not None else ""
+        dl = cvr.get("delta_latency_ms")
+        ltxt = f", {dl:+.0f} ms response latency" if dl is not None else ""
+        lines.append(
+            f"Relevant minus control questions: "
+            f"{cvr['delta_deviations_per_min']:+.1f} deviations/min{ltxt}{ptxt}. "
+            "Question type, length and order all move these numbers."
+        )
+    gt = d.get("ground_truth") or {}
+    if gt.get("auroc") is not None:
+        lines.append(
+            f"Discrimination of the operator's expected classes by the deviation score: AUROC "
+            f"{gt['auroc']:.2f} over {gt['n_truth']} truth and {gt['n_lie']} lie items "
+            "(0.5 = chance). "
+            "Experimental, one person, one session; not evidence of lie detection."
+        )
+    lines.extend(f"Note: {n}." for n in d.get("notes", []))
+    return lines
