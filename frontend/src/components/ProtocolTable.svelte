@@ -13,7 +13,7 @@
   <div class="hdr"><span class="eyebrow">interview protocol</span><span class="muted">click a row to seek</span></div>
   <div class="wrap">
   <table class="mono">
-    <thead><tr><th>#</th><th>cat</th><th class="txt">question</th><th>asked</th><th>latency</th><th>speech</th><th>dev/min</th><th>max SD</th><th>episodes</th><th>blink/min</th><th>pitch SD</th><th class="txt">signals</th></tr></thead>
+    <thead><tr><th>#</th><th>cat</th><th class="txt">question</th><th>asked</th><th>latency</th><th>speech</th><th>dev/min</th><th>max SD</th><th>episodes</th><th>blink/min</th><th>pitch SD</th><th class="txt">signals</th><th class="txt">expressions</th><th>cues</th></tr></thead>
     <tbody>
       {#each qs as q (q.id)}
         <tr class:rel={q.category === 'relevant'} class:ctl={q.category === 'control'} onclick={() => onseek(q.start_us)}>
@@ -22,6 +22,8 @@
           <td>{f(q.answer_speech_s, 1)} s</td><td>{f(q.deviations_per_min, 1)}</td><td>{f(q.max_severity, 1)}</td><td>{q.episodes}</td>
           <td>{f(q.blink_rate_per_min)}</td><td>{q.voice_pitch_delta_sd == null ? '-' : (q.voice_pitch_delta_sd >= 0 ? '+' : '') + f(q.voice_pitch_delta_sd, 1)}</td>
           <td class="txt">{q.top_signals.map((t: any) => `${t.feature.replace(/^(blendshape|au)\./, '')} x${t.count}`).join(', ')}</td>
+          <td class="txt sans expr">{(q.expression_patterns ?? []).join(', ') || '-'}</td>
+          <td title={q.cues ? q.cues.cues.filter((c: any) => c.present).map((c: any) => c.name).join(', ') || 'none present' : ''}>{q.cues ? `${q.cues.present}/${q.cues.evaluated}` : '-'}</td>
         </tr>
       {/each}
     </tbody>
@@ -53,6 +55,7 @@
   tbody tr:hover { background: var(--panel-2); }
   tr.rel td:first-child { border-left: 2px solid var(--accent); }
   tr.ctl td:first-child { border-left: 2px solid var(--cool); }
+  .expr { color: var(--violet); }
   .tag { font-style: normal; color: var(--muted); font-size: 10.5px; border: 1px solid var(--line-strong); padding: 0 4px; border-radius: 2px; }
   .cmp { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 12px; }
   .note { color: var(--accent); }
