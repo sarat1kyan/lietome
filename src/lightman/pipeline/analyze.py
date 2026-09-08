@@ -33,6 +33,13 @@ from lightman.core.timebase import utc_now_iso
 from lightman.events import cluster_cooccurring, detect_blinks, detect_deviation_events
 from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
+from lightman.features.derived import (
+    asymmetry_from_blendshapes,
+    frame_quality_terms,
+    gaze_from_blendshapes,
+    head_speed_deg_s,
+    image_quality_factor,
+)
 from lightman.features.eyes import eye_aspect_ratios
 from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
@@ -42,6 +49,7 @@ from lightman.live.streaming import tag_speaking
 from lightman.media import MediaLimits, iter_video_frames, probe_media, sha256_file
 from lightman.models import ModelRegistry
 from lightman.pipeline.audio_stage import AudioStageResult, run_audio_stage
+from lightman.report.narrative import build_narrative
 from lightman.schema import (
     AnalysisManifest,
     Event,
@@ -242,6 +250,8 @@ def analyze_video(
     au_ms: list[float] = []
     au_frames = 0
     origin_us: int | None = None
+    prev_head: tuple[float, float, float] | None = None
+    prev_t_us: int | None = None
     try:
         for fr in iter_video_frames(media_path, target_fps=cfg.video.target_fps, limits=cfg.limits):
             if origin_us is None:
@@ -262,6 +272,15 @@ def analyze_video(
                     yaw, pitch = hp.yaw_deg, hp.pitch_deg
                 ear_r, ear_l = eye_aspect_ratios(face.landmarks, w, h)
                 ear_mean = float(np.nanmean([ear_r, ear_l]))
+                gz_h, gz_v = gaze_from_blendshapes(face.blendshapes)
+                as_b, as_s = asymmetry_from_blendshapes(face.blendshapes)
+                cur_head = (yaw or 0.0, pitch or 0.0, head[2] if head else 0.0)
+                speed = head_speed_deg_s(
+                    prev_head, cur_head, fr.t_us - prev_t_us if prev_t_us is not None else 0
+                )
+                prev_head, prev_t_us = cur_head, fr.t_us
+                bbox_px = (bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
+                blur, luma = frame_quality_terms(fr.rgb, bbox_px)
                 aus = None
                 if (
                     au_detector is not None
@@ -280,13 +299,16 @@ def analyze_video(
                     t_us=fr.t_us,
                     timestamp_estimated=fr.timestamp_estimated,
                     face_count=len(faces),
-                    quality=face_quality(width_px, yaw, pitch),
+                    quality=face_quality(width_px, yaw, pitch) * image_quality_factor(blur, luma),
                     bbox=bbox,
                     face_width_px=width_px,
                     head=head,
                     eyes=(ear_r, ear_l, ear_mean),
                     blendshapes=face.blendshapes,
                     aus=aus,
+                    derived=(gz_h, gz_v, as_b, as_s, speed),
+                    blur=blur,
+                    luma=luma,
                 )
             else:
                 builder.add_frame(
@@ -493,6 +515,16 @@ def analyze_video(
             for name, sb in baseline.signals.items()
         },
     }
+
+    summary["narrative"] = build_narrative(
+        duration_us=summary["duration_us"],
+        quality=quality_summary.model_dump(mode="json"),
+        baseline=baseline.model_dump(mode="json"),
+        state_baselines={k: v.model_dump(mode="json") for k, v in state_baselines.items()},
+        events=events,
+        audio=summary.get("audio"),
+        mode="prerecorded",
+    )
 
     # ---- outputs
     t5 = time.perf_counter()

@@ -8,6 +8,7 @@
   import EventPanel from './components/EventPanel.svelte'
   import QualityStrip from './components/QualityStrip.svelte'
   import LiveView from './components/LiveView.svelte'
+  import SummaryCard from './components/SummaryCard.svelte'
 
   let sessions = $state<SessionSummary[]>([])
   let current = $state<SessionSummary | null>(null)
@@ -52,8 +53,24 @@
     try { await reload(sessionId) } catch (e) { error = String(e) }
   }
 
+  function onKey(ev: KeyboardEvent) {
+    if (view !== 'sessions' || !current) return
+    const tag = (ev.target as HTMLElement)?.tagName
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
+    const list = events.filter((e) => e.event_type !== 'blink').sort((a, b) => a.start_us - b.start_us)
+    if (ev.key === 'ArrowRight') { playhead = Math.min((current.duration_us ?? playhead + 1e6), playhead + (ev.shiftKey ? 5e6 : 1e6)); ev.preventDefault() }
+    else if (ev.key === 'ArrowLeft') { playhead = Math.max(0, playhead - (ev.shiftKey ? 5e6 : 1e6)); ev.preventDefault() }
+    else if (ev.key === 'j' || ev.key === 'k') {
+      const i = selected ? list.findIndex((e) => e.event_id === selected!.event_id) : -1
+      const next = ev.key === 'j' ? list[i + 1] : list[Math.max(0, i - 1)]
+      if (next) pick(next)
+    } else if (ev.key === 'Escape') selected = null
+  }
+
   onMount(async () => {
+    window.addEventListener('keydown', onKey)
     try { await reload() } catch (e) { error = String(e) }
+    return () => window.removeEventListener('keydown', onKey)
   })
 </script>
 
@@ -72,6 +89,7 @@
     </div>
     <div class="top-right muted">
       {#if api.isDemo()}<span class="chip">demo data</span>{/if}
+      <span class="keys mono" title="keyboard">arrows seek, shift+arrows 5 s, j/k next/prev event, esc clear</span>
       <span>observations and interpretations of measured behavior. not a lie detector.</span>
     </div>
   </header>
@@ -87,6 +105,7 @@
       <VideoStage session={current} {events} {selected} bind:playhead />
       <Timeline {events} {video} {audio} baseline={detail.baseline} audioBaseline={detail.audio_baseline}
                 duration={current.duration_us ?? 0} bind:playhead {selected} onpick={pick} onseek={seekTo} />
+      <SummaryCard {detail} {events} />
       <QualityStrip {detail} {events} />
     {:else if !loading}
       <div class="empty">
@@ -118,8 +137,9 @@
   .mark { width: 10px; height: 10px; background: var(--accent); display: inline-block; transform: translateY(1px); }
   .name { font-weight: 600; letter-spacing: 0.02em; font-size: 14px; }
   .top-right { display: flex; gap: 12px; align-items: center; font-size: 12px; }
+  .keys { font-size: 10.5px; color: var(--faint); }
   .chip { border: 1px solid var(--accent); color: var(--accent); padding: 1px 7px; border-radius: 10px; font-size: 11px; }
-  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; min-height: 0; background: var(--ground); }
+  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
   .empty { padding: 48px; color: var(--muted); }
   .error { margin: 12px; padding: 10px 12px; border: 1px solid var(--warn); color: var(--warn); border-radius: var(--radius); }
   code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; }

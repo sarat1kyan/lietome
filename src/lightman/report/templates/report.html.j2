@@ -20,6 +20,8 @@ main{padding:20px 28px;display:grid;gap:22px}
 .kv dd{margin:0}
 .disclaimer{border-left:3px solid var(--accent);padding:10px 14px;color:var(--fg);background:var(--panel2);font-size:13px}
 .note{color:var(--accent)}
+.narr{margin:0;padding-left:18px;line-height:1.55;max-width:80ch}
+.narr li{margin-bottom:4px}
 svg.signal{width:100%;height:auto;display:block}
 .plotbg{fill:var(--panel2)}
 .basewin{fill:var(--basewin)}
@@ -51,6 +53,13 @@ small{color:var(--muted)}
 </header>
 <main>
   <div class="disclaimer">{{ disclaimer }}</div>
+
+  {% if summary.narrative %}
+  <section class="panel">
+    <h2>What happened, in plain words</h2>
+    <ul class="narr">{% for line in summary.narrative %}<li>{{ line }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
 
   <section class="panel grid">
     <div>

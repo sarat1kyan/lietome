@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 from pathlib import Path
 from typing import Annotated
 
@@ -206,19 +207,56 @@ def serve(
     config: Annotated[
         Path | None, typer.Option("--config", "-c", exists=True, dir_okay=False)
     ] = None,
+    tls: Annotated[
+        bool | None, typer.Option("--tls/--no-tls", help="Default: on when not bound to localhost")
+    ] = None,
+    token: Annotated[str | None, typer.Option(help="Access token; generated when omitted")] = None,
 ) -> None:
-    """Serve the web UI and API for a session root (local by default)."""
+    """Serve the web UI and API. Local by default; --host 0.0.0.0 enables LAN access with
+    a required token and self-signed TLS (browsers need HTTPS for camera and microphone)."""
     import uvicorn
 
     from lightman.api.app import create_app
+    from lightman.api.security import ensure_self_signed_cert, lan_addresses, new_token
 
     try:
         cfg = LightmanConfig.load(config)
     except LightmanError as exc:
         _fail(exc)
         return
-    typer.echo(f"Lightman UI: http://{host}:{port}/  (API docs: /api/docs)")
-    uvicorn.run(create_app(out, cfg), host=host, port=port, log_level="warning")
+    local_only = host in ("127.0.0.1", "localhost", "::1")
+    use_tls = tls if tls is not None else not local_only
+    tok = token or (new_token() if not local_only else None)
+    certfile: str | None = None
+    keyfile: str | None = None
+    scheme = "http"
+    if use_tls:
+        cert, key = ensure_self_signed_cert([*lan_addresses(), socket.gethostname()])
+        certfile, keyfile = str(cert), str(key)
+        scheme = "https"
+    hosts = ["127.0.0.1"] if local_only else lan_addresses() or [host]
+    q = f"/?token={tok}" if tok else "/"
+    for h in hosts:
+        typer.echo(f"Lightman UI: {scheme}://{h}:{port}{q}")
+    if use_tls:
+        typer.secho(
+            "Self-signed certificate: the browser will warn once; accept it to continue.",
+            fg=typer.colors.YELLOW,
+        )
+    if not local_only:
+        typer.secho(
+            "Serving on the network. The token in the URL is required; anyone with it can view "
+            "sessions. Stop the server when done.",
+            fg=typer.colors.YELLOW,
+        )
+    uvicorn.run(
+        create_app(out, cfg, token=tok),
+        host=host,
+        port=port,
+        log_level="warning",
+        ssl_certfile=certfile,
+        ssl_keyfile=keyfile,
+    )
 
 
 @app.command()

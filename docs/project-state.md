@@ -1,6 +1,6 @@
 # Project state
 
-Last updated: 2026-09-05 (session 3: browser live capture, four real webcam sessions, adaptive baseline). Facts only.
+Last updated: 2026-09-05 (session 4: enhancements pass, network access). Facts only.
 
 ## Phase
 
@@ -36,6 +36,10 @@ published as release `models-v1` on the repository; no package release.
   over the WebSocket; first real webcam run happened on the maintainer's machine via the CLI.
 * Guided calibration in the live tab (settle 12 s, read passage 18 s) with phase hints to the
   server and a baseline-ready summary; protocol in docs/calibration.md.
+* Network serving with token + self-signed TLS (ADR-015). Derived signals (gaze proxy,
+  asymmetry, head speed), blur/luma quality terms, blink-rate change events, templated
+  narrative (analysis.json, report, UI summary card), live SD lanes with adaptive baseline
+  pushed every 2 s, keyboard scrubbing.
 * Live mode (`lightman live`): webcam or real-time file replay, capture thread + queue(2,
   drop oldest), streaming baseline/deviation/blink detectors verified against the offline
   ones, console + labelled preview window, same session outputs. Video only.

@@ -57,6 +57,7 @@ AU detector (resnet50) or **17-20 ms** (resnet18). A 20 s 640x480 clip takes 3.4
 ```bash
 cd frontend && npm install && npm run build && cd ..   # once; CI and Docker do this too
 uv run lightman serve -o output/                       # http://127.0.0.1:8710
+uv run lightman serve -o output/ --host 0.0.0.0        # LAN: prints https://<ip>:8710/?token=... (self-signed, accept once)
 ```
 
 Session rail, video stage (attach the original file for local playback; it never leaves your

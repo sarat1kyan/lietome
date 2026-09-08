@@ -53,7 +53,9 @@ The founding brief proposed INPUT -> VIDEO+AUDIO+SPEECH -> TEMPORAL -> BASELINE 
 * `Provenance` - extractor id/version, model id + SHA-256, runtime, Lightman version.
 * `MediaInfo` / `VideoStreamInfo` / `AudioStreamInfo` - demuxer facts; file name + hash only.
 * Per-frame **FeatureTable** (Arrow/Parquet) - not pydantic; columns are documented in
-  `features/table.py`. Meta: `frame_index, source_index, t_us, timestamp_estimated,
+  `features/table.py`. Derived signals: gaze proxy (`gaze.*` from iris blendshapes), left/right
+  asymmetry (`asym.*`), head angular speed (`head.speed_deg_s`); quality terms `quality.blur`
+  (Laplacian variance) and `quality.luma` multiply into the frame quality. Meta: `frame_index, source_index, t_us, timestamp_estimated,
   face_present, face_count, quality, face.bbox_*, face.width_px`. Signals: `head.*`, `eye.*`,
   `blendshape.*`.
 * `SignalBaseline` / `BaselineSnapshot` - center, scale, n, floor flag per signal; window,

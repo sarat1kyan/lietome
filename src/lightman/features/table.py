@@ -33,6 +33,13 @@ EYE_COLUMNS: tuple[str, ...] = (
     "eye.aspect_ratio_left",
     "eye.aspect_ratio_mean",
 )
+DERIVED_COLUMNS: tuple[str, ...] = (
+    "gaze.horizontal",
+    "gaze.vertical",
+    "asym.brow_lower",
+    "asym.mouth_smile",
+    "head.speed_deg_s",
+)
 BLENDSHAPE_COLUMNS: tuple[str, ...] = tuple(f"blendshape.{n}" for n in BLENDSHAPE_NAMES)
 AU_COLUMNS: tuple[str, ...] = tuple(f"au.{n}" for n in OPENGRAPHAU_NAMES)
 META_COLUMNS: tuple[str, ...] = (
@@ -49,8 +56,12 @@ META_COLUMNS: tuple[str, ...] = (
     "face.bbox_y1",
     "face.width_px",
     "speaking",
+    "quality.blur",
+    "quality.luma",
 )
-SIGNAL_COLUMNS: tuple[str, ...] = HEAD_COLUMNS + EYE_COLUMNS + BLENDSHAPE_COLUMNS + AU_COLUMNS
+SIGNAL_COLUMNS: tuple[str, ...] = (
+    HEAD_COLUMNS + EYE_COLUMNS + DERIVED_COLUMNS + BLENDSHAPE_COLUMNS + AU_COLUMNS
+)
 FEATURE_COLUMNS: tuple[str, ...] = META_COLUMNS + SIGNAL_COLUMNS
 
 
@@ -58,6 +69,10 @@ def signal_unit(name: str) -> str:
     """Physical unit for a signal column (used in events and reports)."""
     if name.endswith("_deg"):
         return "deg"
+    if name.endswith("_deg_s"):
+        return "deg_s"
+    if name.startswith(("gaze.", "asym.")):
+        return "coefficient"
     if name.startswith("head.t"):
         return "model_units"
     if name.startswith("eye.aspect_ratio"):
@@ -97,6 +112,9 @@ class FeatureTableBuilder:
         blendshapes: dict[str, float] | None,
         aus: Sequence[float] | npt.NDArray[np.floating] | None = None,
         speaking: bool = False,
+        derived: Sequence[float] | None = None,
+        blur: float = math.nan,
+        luma: float = math.nan,
     ) -> None:
         c = self._cols
         c["frame_index"].append(frame_index)
@@ -113,6 +131,11 @@ class FeatureTableBuilder:
         c["face.bbox_y1"].append(y1)
         c["face.width_px"].append(face_width_px)
         c["speaking"].append(speaking)
+        c["quality.blur"].append(blur)
+        c["quality.luma"].append(luma)
+        dv = list(derived) if derived is not None else [math.nan] * len(DERIVED_COLUMNS)
+        for name, v in zip(DERIVED_COLUMNS, dv, strict=True):
+            c[name].append(v)
         hv = list(head) if head is not None else [math.nan] * len(HEAD_COLUMNS)
         for name, v in zip(HEAD_COLUMNS, hv, strict=True):
             c[name].append(v)

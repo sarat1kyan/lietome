@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from lightman import __version__
 from lightman.api.live_ws import AUFactory, LandmarkerFactory, live_endpoint
+from lightman.api.security import TokenMiddleware, token_ok, ws_token
 from lightman.api.sessions import SessionNotFoundError, SessionStore
 from lightman.config import LightmanConfig
 from lightman.core.errors import LightmanError
@@ -60,6 +61,7 @@ def create_app(
     *,
     landmarker_factory: LandmarkerFactory | None = None,
     au_factory: AUFactory | None = None,
+    token: str | None = None,
 ) -> FastAPI:
     cfg = cfg or LightmanConfig()
     store = SessionStore(output_root)
@@ -72,6 +74,8 @@ def create_app(
     au_fact = au_factory or default_au_factory
     jobs = JobRegistry()
     app = FastAPI(title="Lightman", version=__version__, docs_url="/api/docs", redoc_url=None)
+    if token:
+        app.add_middleware(TokenMiddleware, token=token)
 
     @app.exception_handler(SessionNotFoundError)
     async def _nf(_req: Any, exc: SessionNotFoundError) -> JSONResponse:
@@ -182,6 +186,9 @@ def create_app(
 
     @app.websocket("/api/live")
     async def live(ws: WebSocket) -> None:
+        if token and not token_ok(ws_token(ws), token):
+            await ws.close(code=4401)
+            return
         await live_endpoint(
             ws,
             cfg=cfg,

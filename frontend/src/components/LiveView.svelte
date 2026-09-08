@@ -22,6 +22,7 @@
   let session: LiveSession | null = null
   let sessionId = $state<string | null>(null)
   let showAll = $state(false)
+  let readoutGaze = $derived(last && last.values['gaze.horizontal'] != null ? (Math.abs(last.values['gaze.horizontal']) < 0.15 ? 'gaze center' : last.values['gaze.horizontal'] > 0 ? 'gaze left' : 'gaze right') : '')
   let calib = $state<{ name: string; instruction: string; remaining: number; speaking: boolean } | null>(null)
   let baselineInfo = $state<LiveBaselineMsg | null>(null)
   let lastPhaseSpeaking: boolean | null = null
@@ -29,7 +30,8 @@
   const sev = (v: number) => (v > 20 ? '>20' : v.toFixed(1))
 
   const WINDOW_US = 60e6
-  const LANES = ['head.yaw_deg', 'eye.aspect_ratio_mean', 'blendshape.browDownLeft', 'au.AU4', 'au.AU12', 'voice.f0_hz', 'voice.energy_db']
+  const LANES = ['head.yaw_deg', 'head.speed_deg_s', 'gaze.horizontal', 'blendshape.browInnerUp', 'blendshape.jawOpen', 'asym.mouth_smile', 'au.AU4', 'au.AU12', 'voice.f0_hz', 'voice.energy_db']
+  let laneBase = $state<Record<string, { center: number; scale: number }>>({})
   // rolling raw values per lane; drawn as raw values scaled to a running min/max until the server
   // baseline is ready (we do not have the baseline numbers client-side; the lanes show shape, the
   // events carry the SD numbers)
@@ -64,6 +66,9 @@
       events = [...m.events.filter((e: LmEvent) => e.event_type !== 'blink'), ...events].slice(0, 300)
     } else if (m.type === 'baseline') {
       baselineInfo = m
+      if (m.signals) laneBase = m.signals
+    } else if (m.type === 'baseline_update') {
+      laneBase = m.signals
     } else if (m.type === 'session') {
       sessionId = m.session_id
     }
@@ -104,7 +109,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, W, H)
     ctx.font = '10.5px "JetBrains Mono", monospace'; ctx.textBaseline = 'middle'
-    const labelW = 150
+    const labelW = 215
     const x = (t: number) => labelW + ((t - (now - WINDOW_US)) / WINDOW_US) * (W - labelW - 8)
     LANES.forEach((name, i) => {
       const y0 = 2 + i * 34, h = 30
@@ -113,17 +118,37 @@
       const hh = hist[name]
       const cur = hh.v.length ? hh.v[hh.v.length - 1] : null
       ctx.fillStyle = '#7c8794'; ctx.fillText(cur == null ? '-' : Math.abs(cur) >= 100 ? cur.toFixed(0) : cur.toFixed(2), 6, y0 + 23)
+      ctx.fillStyle = '#4b5663'; ctx.fillText(laneBase[name] ? 'SD lanes: baseline center = mid line' : 'raw (baseline pending)', 100, y0 + 10)
       if (hh.v.length < 2) return
-      let lo = Infinity, hi = -Infinity
-      for (const v of hh.v) { if (v < lo) lo = v; if (v > hi) hi = v }
-      if (hi - lo < 1e-6) { lo -= 0.5; hi += 0.5 }
-      ctx.strokeStyle = name.startsWith('voice.') ? '#5fb8ae' : name.startsWith('au.') || name.startsWith('blendshape.') ? '#d4a24c' : '#7fb4e8'
+      const b = laneBase[name]
+      ctx.strokeStyle = name.startsWith('voice.') ? '#5fb8ae' : name.startsWith('au.') || name.startsWith('blendshape.') || name.startsWith('asym.') ? '#d4a24c' : '#7fb4e8'
       ctx.lineWidth = 1; ctx.beginPath()
-      for (let k = 0; k < hh.v.length; k++) {
-        const px = x(hh.t[k]), py = y0 + 3 + (1 - (hh.v[k] - lo) / (hi - lo)) * (h - 6)
-        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      if (b && b.scale > 0) {
+        // SD units: mid line = baseline center, +-6 SD span, dashed guides at +-3
+        const Z = 6, ymid = y0 + h / 2, sy = (h - 6) / (2 * Z)
+        ctx.save(); ctx.strokeStyle = '#4b5663'; ctx.setLineDash([2, 4])
+        for (const z of [3, -3]) { ctx.beginPath(); ctx.moveTo(labelW, ymid - z * sy); ctx.lineTo(W - 8, ymid - z * sy); ctx.stroke() }
+        ctx.setLineDash([]); ctx.strokeStyle = '#2b3846'; ctx.beginPath(); ctx.moveTo(labelW, ymid); ctx.lineTo(W - 8, ymid); ctx.stroke(); ctx.restore()
+        ctx.beginPath()
+        for (let k = 0; k < hh.v.length; k++) {
+          const z = Math.max(-Z, Math.min(Z, (hh.v[k] - b.center) / b.scale))
+          const px = x(hh.t[k]), py = ymid - z * sy
+          if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+        }
+        ctx.stroke()
+        const zc = cur == null ? null : (cur - b.center) / b.scale
+        ctx.fillStyle = zc != null && Math.abs(zc) >= 3 ? '#d4a24c' : '#7c8794'
+        ctx.fillText(zc == null ? '' : `${zc >= 0 ? '+' : ''}${zc.toFixed(1)} SD`, labelW - 62, y0 + 23)
+      } else {
+        let lo = Infinity, hi = -Infinity
+        for (const v of hh.v) { if (v < lo) lo = v; if (v > hi) hi = v }
+        if (hi - lo < 1e-6) { lo -= 0.5; hi += 0.5 }
+        for (let k = 0; k < hh.v.length; k++) {
+          const px = x(hh.t[k]), py = y0 + 3 + (1 - (hh.v[k] - lo) / (hi - lo)) * (h - 6)
+          if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+        }
+        ctx.stroke()
       }
-      ctx.stroke()
     })
     for (const e of events) {
       if (e.end_us < now - WINDOW_US) continue
@@ -189,6 +214,7 @@
           <div>{tc(last.t_us)}</div>
           <div>{last.baseline_ready ? 'baseline ready' : 'calibrating baseline'} quality {last.quality.toFixed(2)}</div>
           {#if last.values['head.yaw_deg'] != null}<div>yaw {last.values['head.yaw_deg'].toFixed(0)} pitch {last.values['head.pitch_deg'].toFixed(0)} roll {last.values['head.roll_deg'].toFixed(0)}</div>{/if}
+          {#if readoutGaze}<div>{readoutGaze}{last?.values['head.speed_deg_s'] != null ? `, head ${last.values['head.speed_deg_s'].toFixed(0)} deg/s` : ''}</div>{/if}
           {#if audioLast}<div>speech {audioLast.speech_prob.toFixed(2)} f0 {audioLast.f0_hz ? audioLast.f0_hz.toFixed(0) + ' Hz' : '-'} {audioLast.energy_db.toFixed(0)} dB</div>{/if}
           <div class="muted">{last.stats.analyzed_fps.toFixed(1)} fps, latency {last.stats.latency_ms_p50?.toFixed(0) ?? '-'} ms, dropped {last.stats.frames_dropped}</div>
         </div>
