@@ -125,11 +125,30 @@ def build_narrative(
             kinds = Counter(" ".join(e.label.split(" ")[:2]) for e in voice if " " in e.label)
             listed = ", ".join(f"{k} ({n})" for k, n in kinds.most_common(3))
             lines.append(f"{len(voice)} voice events: {listed}.")
+    expr = [e for e in events if e.event_type == "expression_pattern"]
+    if expr:
+        by = Counter(t for e in expr for t in e.tags if t not in ("expression", "brief"))
+        brief = sum("brief" in e.tags for e in expr)
+        listed = ", ".join(f"{k} ({n})" for k, n in by.most_common(4))
+        lines.append(
+            f"{len(expr)} FACS expression patterns appeared ({brief} brief, under 500 ms): "
+            f"{listed}. These name what the face looked like, not what was felt."
+        )
     lines.append(
         "These are measurements of movement and voice relative to this person's own baseline. They "
         "do not identify emotions, intent or truthfulness."
     )
     return lines
+
+
+def cues_narrative(cues: dict[str, Any] | None) -> list[str]:
+    if not cues:
+        return []
+    present = [c["name"] for c in cues.get("cues", []) if c.get("present")]
+    txt = f"Deception-research cue check for the session: {cues.get('summary', '')}."
+    if present:
+        txt += " Present: " + ", ".join(present) + "."
+    return [txt, cues.get("caveat", "")]
 
 
 def protocol_narrative(protocol: Any) -> list[str]:
@@ -167,5 +186,10 @@ def protocol_narrative(protocol: Any) -> list[str]:
             "(0.5 = chance). "
             "Experimental, one person, one session; not evidence of lie detection."
         )
+    lines.extend(
+        f"Q{q['id'].lstrip('q')}: {q['cues']['summary']}."
+        for q in qs
+        if q.get("cues") and q["cues"].get("present")
+    )
     lines.extend(f"Note: {n}." for n in d.get("notes", []))
     return lines

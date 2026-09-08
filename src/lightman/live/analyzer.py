@@ -41,6 +41,8 @@ from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
 from lightman.features.smoothing import StreamingMedian
 from lightman.features.table import FeatureTableBuilder
+from lightman.interpretation.cues import cue_profile
+from lightman.interpretation.expressions import StreamingExpressionDetector
 from lightman.live.streaming import (
     StreamingBaseline,
     StreamingBlinkDetector,
@@ -56,7 +58,7 @@ from lightman.pipeline.analyze import (
     _new_session_id,
 )
 from lightman.protocol import Marker, summarize_protocol
-from lightman.report.narrative import build_narrative, protocol_narrative
+from lightman.report.narrative import build_narrative, cues_narrative, protocol_narrative
 from lightman.schema import AnalysisManifest, Event, MediaInfo, OutputArtifact, QualitySummary
 from lightman.schema.media import VideoStreamInfo
 
@@ -142,6 +144,7 @@ class LiveAnalyzer:
         self._au_smooth: dict[str, StreamingMedian] = {}
         self.adaptive: AdaptiveBaseline | None = None
         self.markers: list[Marker] = []
+        self.expressions: StreamingExpressionDetector | None = None
         self._prev_head: tuple[float, float, float] | None = None
         self._prev_t_us: int | None = None
         """Set by the caller from the audio stream: True while speech is detected."""
@@ -283,6 +286,8 @@ class LiveAnalyzer:
                 state=state,
                 suppress_prefixes=eye_region if self.blinks.eyes_closed else (),
             )
+            if self.expressions is not None:
+                new_events += self.expressions.update(t_us, quality, values)
             if self.adaptive is not None:
                 st = state if state in self.adaptive.states() else STATE_ALL
                 self.adaptive.update(st, t_us, values)
@@ -326,6 +331,12 @@ class LiveAnalyzer:
             state_baselines=self.baseline.state_snapshots,
             center_scale=self.adaptive.center_scale if self.adaptive else None,
         )
+        self.expressions = StreamingExpressionDetector(
+            subject_id=self.subject_id,
+            extractor_id=ext,
+            baseline_quality=snap.quality,
+            frame_period_us=self.period_us,
+        )
         self.blinks = StreamingBlinkDetector(
             self.cfg.events,
             blink_threshold(snap, self.cfg.events),
@@ -368,6 +379,8 @@ class LiveAnalyzer:
             self.events.extend(flushed)
             self.events.extend(self.episodes.add(flushed, self._last_t or 0))
         self.events.extend(self.episodes.flush())
+        if self.expressions is not None:
+            self.events.extend(self.expressions.flush(self._last_t or 0))
         if self.blinks is not None and self.baseline.snapshot is not None:
             self.events.extend(
                 blink_rate_events(
@@ -461,6 +474,29 @@ class LiveAnalyzer:
             notes=notes,
         )
         protocol = None
+        sig_cols = {k: cols[k].astype(np.float64) for k in snap.signals if k in cols}
+        ref_blinks = [e.start_us for e in self.events if e.event_type == "blink"]
+        ref_end = snap.window_end_us + 60_000_000
+        ref_n = sum(1 for b in ref_blinks if snap.window_end_us <= b < ref_end)
+        cue_inputs: dict[str, Any] = {
+            "signals": sig_cols,
+            "baseline_center": {k: v.center for k, v in snap.signals.items()},
+            "baseline_scale": {k: v.scale for k, v in snap.signals.items()},
+            "reference_blink_rate": ref_n or None,
+            "session_start_us": snap.window_end_us,
+        }
+        analysis["session_cues"] = cue_profile(
+            window=(snap.window_end_us, analysis["duration_us"]),
+            t_us=cols["t_us"].astype(np.int64),
+            signals=sig_cols,
+            baseline_center={k: v.center for k, v in snap.signals.items()},
+            baseline_scale={k: v.scale for k, v in snap.signals.items()},
+            voice_f0_z=None,
+            blink_times_us=ref_blinks,
+            reference_blink_rate=ref_n or None,
+            response_latency_ms=None,
+            control_latency_ms=None,
+        )
         if self.markers:
             protocol = summarize_protocol(
                 self.markers,
@@ -468,6 +504,7 @@ class LiveAnalyzer:
                 t_us=cols["t_us"].astype(np.int64),
                 speaking=cols["speaking"].astype(bool) if self.has_audio else None,
                 session_end_us=analysis["duration_us"],
+                cue_inputs=cue_inputs,
             )
             (session_dir / "protocol.json").write_text(
                 json.dumps(_nan_to_none(protocol.model_dump(mode="json")), indent=2)
@@ -484,6 +521,7 @@ class LiveAnalyzer:
             audio=None,
             mode="live",
         )
+        analysis["narrative"] += cues_narrative(analysis.get("session_cues"))
         if protocol is not None:
             analysis["narrative"] += protocol_narrative(protocol)
         (session_dir / "analysis.json").write_text(json.dumps(_nan_to_none(analysis), indent=2))
