@@ -32,6 +32,7 @@ from lightman.live.audio_stream import StreamingAudioAnalyzer
 from lightman.models import ModelRegistry
 from lightman.pipeline.analyze import _nan_to_none
 from lightman.pipeline.audio_stage import VAD_MODEL_ID
+from lightman.protocol import Marker
 from lightman.schema import Event
 
 log = get_logger(__name__)
@@ -141,6 +142,25 @@ async def live_endpoint(
                     analyzer.has_audio = audio is not None
                     await ws.send_text(
                         json.dumps({"type": "ready", "session_id": analyzer.session_id})
+                    )
+                elif kind == "mark" and analyzer is not None:
+                    try:
+                        marker = Marker(
+                            kind=str(data.get("kind_of", "question")),
+                            t_us=int(data.get("t_us", analyzer._last_t or 0)),
+                            id=str(data.get("id", ""))[:32],
+                            text=str(data.get("text", ""))[:500],
+                            category=str(data.get("category", "neutral")),
+                            expected=data.get("expected"),
+                        )
+                    except ValueError as exc:
+                        await ws.send_text(
+                            json.dumps({"type": "error", "detail": f"bad marker: {exc}"})
+                        )
+                        continue
+                    analyzer.add_marker(marker)
+                    await ws.send_text(
+                        json.dumps({"type": "marked", "id": marker.id, "t_us": marker.t_us})
                     )
                 elif kind == "phase" and analyzer is not None:
                     analyzer.speaking_hint = bool(data.get("speaking", False))

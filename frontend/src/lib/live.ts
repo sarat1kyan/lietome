@@ -19,7 +19,7 @@ export interface LiveSessionMsg { type: 'session'; session_id: string }
 export interface LiveBaselineMsg { type: 'baseline'; frames_used: number; quality: number; states: Record<string, { frames_used: number; quality: number }>; signals?: Record<string, { center: number; scale: number }> }
 export interface LiveBaselineUpdateMsg { type: 'baseline_update'; signals: Record<string, { center: number; scale: number }> }
 export interface LiveErrorMsg { type: 'error'; detail: string }
-export type LiveMsg = LiveFrameMsg | LiveEventsMsg | LiveAudioMsg | LiveSessionMsg | LiveBaselineMsg | LiveBaselineUpdateMsg | LiveErrorMsg | { type: 'ready'; session_id: string }
+export type LiveMsg = LiveFrameMsg | LiveEventsMsg | LiveAudioMsg | LiveSessionMsg | LiveBaselineMsg | LiveBaselineUpdateMsg | LiveErrorMsg | { type: 'ready'; session_id: string } | { type: 'marked'; id: string; t_us: number }
 
 export interface LiveOptions {
   au: boolean
@@ -117,6 +117,10 @@ export class LiveSession {
     }
     src.connect(this.audioNode)
     this.audioNode.connect(this.audioCtx.destination)
+  }
+
+  mark(m: { kind_of: 'question' | 'note' | 'end'; id?: string; text?: string; category?: string; expected?: string | null; t_us: number }) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'mark', ...m }))
   }
 
   setPhase(speaking: boolean) {

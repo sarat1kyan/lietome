@@ -80,6 +80,8 @@ class SessionStore:
             "metadata.json",
             "audio_baseline.json",
             "speech_segments.json",
+            "protocol.json",
+            "state_baselines.json",
         }:
             raise SessionNotFoundError("unknown artifact")
         p = d / name

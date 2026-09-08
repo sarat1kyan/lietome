@@ -99,6 +99,10 @@ def create_app(
             "segments": store.read_json(session_id, "speech_segments.json"),
         }
 
+    @app.get("/api/sessions/{session_id}/protocol")
+    def get_protocol(session_id: str) -> Any:
+        return store.read_json(session_id, "protocol.json") or {"questions": [], "markers": []}
+
     @app.get("/api/sessions/{session_id}/events")
     def get_events(session_id: str) -> Any:
         return store.read_json(session_id, "events.json") or {"schema_version": 1, "events": []}

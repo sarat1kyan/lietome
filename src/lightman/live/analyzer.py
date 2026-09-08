@@ -55,7 +55,8 @@ from lightman.pipeline.analyze import (
     _nan_to_none,
     _new_session_id,
 )
-from lightman.report.narrative import build_narrative
+from lightman.protocol import Marker, summarize_protocol
+from lightman.report.narrative import build_narrative, protocol_narrative
 from lightman.schema import AnalysisManifest, Event, MediaInfo, OutputArtifact, QualitySummary
 from lightman.schema.media import VideoStreamInfo
 
@@ -140,6 +141,7 @@ class LiveAnalyzer:
         self.baseline_just_ready = False
         self._au_smooth: dict[str, StreamingMedian] = {}
         self.adaptive: AdaptiveBaseline | None = None
+        self.markers: list[Marker] = []
         self._prev_head: tuple[float, float, float] | None = None
         self._prev_t_us: int | None = None
         """Set by the caller from the audio stream: True while speech is detected."""
@@ -337,6 +339,9 @@ class LiveAnalyzer:
             "live_baseline_ready", frames_used=snap.frames_used, quality=round(snap.quality, 2)
         )
 
+    def add_marker(self, marker: Marker) -> None:
+        self.markers.append(marker)
+
     def baseline_view(self, signals: list[str]) -> dict[str, dict[str, float]]:
         """Current (adaptive when available) center/scale per signal for the 'all' state."""
         out: dict[str, dict[str, float]] = {}
@@ -455,6 +460,19 @@ class LiveAnalyzer:
             baseline_window_us=(0, snap.window_end_us),
             notes=notes,
         )
+        protocol = None
+        if self.markers:
+            protocol = summarize_protocol(
+                self.markers,
+                events=self.events,
+                t_us=cols["t_us"].astype(np.int64),
+                speaking=cols["speaking"].astype(bool) if self.has_audio else None,
+                session_end_us=analysis["duration_us"],
+            )
+            (session_dir / "protocol.json").write_text(
+                json.dumps(_nan_to_none(protocol.model_dump(mode="json")), indent=2)
+            )
+            outputs.append(_artifact(session_dir / "protocol.json", "json"))
         analysis["narrative"] = build_narrative(
             duration_us=analysis["duration_us"],
             quality=quality_summary.model_dump(mode="json"),
@@ -466,6 +484,8 @@ class LiveAnalyzer:
             audio=None,
             mode="live",
         )
+        if protocol is not None:
+            analysis["narrative"] += protocol_narrative(protocol)
         (session_dir / "analysis.json").write_text(json.dumps(_nan_to_none(analysis), indent=2))
         outputs = [o for o in outputs if o.name != "analysis.json"]
         outputs.append(_artifact(session_dir / "analysis.json", "json"))

@@ -20,3 +20,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 013 | Speaking/silent state baselines and AU smoothing | accepted |
 | 014 | Bounded adaptive baseline | accepted |
 | 015 | Network access: token and self-signed TLS | accepted |
+| 016 | Interview protocol mode | accepted |

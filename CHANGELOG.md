@@ -24,6 +24,9 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 - Web UI: `lightman serve` (FastAPI, localhost) + Svelte 5 workstation (session rail, video
   stage with local playback, canvas timeline in robust-SD units, evidence panel, quality
   strip); upload-and-analyze endpoint; single-file demo build.
+- Interview protocol mode: question script, timestamped markers over the live WebSocket,
+  protocol.json with per-question summaries, category comparison and experimental AUROC;
+  protocol table and timeline spans in the UI; narrative lines (ADR-016).
 - Network serving: token + self-signed TLS when bound off localhost (ADR-015).
 - New signals: gaze proxy, brow/smile asymmetry, head speed; blur and luminance in frame
   quality; blink-rate change events; plain-language session narrative in analysis.json,
