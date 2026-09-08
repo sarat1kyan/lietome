@@ -4,6 +4,7 @@
   import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg } from '../lib/live'
   import { CALIBRATION_SECONDS, PASSAGE, phaseAt } from '../lib/calibration'
   import { DEFAULT_SCRIPT, parseScript, type ScriptQuestion } from '../lib/protocol'
+  import { auName, patternScores, PATTERN_ENTER } from '../lib/facs'
   import type { LmEvent } from '../lib/types'
 
   let { ondone }: { ondone: (sessionId: string) => void } = $props()
@@ -33,6 +34,9 @@
   const WINDOW_US = 60e6
   const LANES = ['head.yaw_deg', 'head.speed_deg_s', 'gaze.horizontal', 'blendshape.browInnerUp', 'blendshape.jawOpen', 'asym.mouth_smile', 'au.AU4', 'au.AU12', 'voice.f0_hz', 'voice.energy_db']
   let laneBase = $state<Record<string, { center: number; scale: number }>>({})
+  let flashes: { text: string; until: number; color: string }[] = []
+  let lastBlinkAt = 0
+  let showOverlay = $state(true)
   let showProtocol = $state(false)
   let script = $state(DEFAULT_SCRIPT)
   const questions = $derived(parseScript(script))
@@ -99,6 +103,12 @@
       push('voice.f0_hz', m.t_us, m.f0_hz); push('voice.energy_db', m.t_us, m.energy_db)
     } else if (m.type === 'events') {
       events = [...m.events.filter((e: LmEvent) => e.event_type !== 'blink'), ...events].slice(0, 300)
+      const now = performance.now()
+      for (const e of m.events as LmEvent[]) {
+        if (e.event_type === 'blink') { lastBlinkAt = now; continue }
+        if (e.event_type === 'episode' || e.event_type === 'expression_pattern' || e.event_type === 'blink_rate_change' || e.source === 'audio')
+          flashes = [{ text: e.label.replace('expression pattern: ', ''), until: now + 2500, color: e.event_type === 'expression_pattern' ? '#b48ce6' : e.source === 'audio' ? '#5fb8ae' : '#d4a24c' }, ...flashes].slice(0, 4)
+      }
       if (currentQ) { const n = m.events.filter((e: LmEvent) => e.event_type === 'baseline_deviation').length; if (n) asked[qIndex] = { ...asked[qIndex], devs: asked[qIndex].devs + n } }
     } else if (m.type === 'baseline') {
       baselineInfo = m
@@ -133,6 +143,81 @@
       ctx.strokeStyle = m.baseline_ready ? '#d4a24c' : '#7fb4e8'; ctx.lineWidth = 1
       ctx.strokeRect(ox + x0 * dw, oy + y0 * dh, (x1 - x0) * dw, (y1 - y0) * dh)
     }
+    if (!showOverlay) return
+    ctx.font = '11px "JetBrains Mono", monospace'; ctx.textBaseline = 'middle'
+    const vals = m.values
+    // head pose axes at face center (yaw/pitch/roll in degrees)
+    if (m.bbox && vals['head.yaw_deg'] != null) {
+      const [x0, y0, x1, y1] = m.bbox
+      const cx = ox + ((x0 + x1) / 2) * dw, cy = oy + ((y0 + y1) / 2) * dh, L = 0.25 * (x1 - x0) * dw
+      const yaw = (vals['head.yaw_deg'] * Math.PI) / 180, pitch = (vals['head.pitch_deg'] * Math.PI) / 180, roll = (vals['head.roll_deg'] * Math.PI) / 180
+      const axis = (x: number, y: number, z: number, color: string) => {
+        // rotate unit axis by roll(z), pitch(x), yaw(y); project ignoring depth
+        let [X, Y, Z] = [x, y, z]
+        ;[Y, Z] = [Y * Math.cos(pitch) - Z * Math.sin(pitch), Y * Math.sin(pitch) + Z * Math.cos(pitch)]
+        ;[X, Z] = [X * Math.cos(yaw) + Z * Math.sin(yaw), -X * Math.sin(yaw) + Z * Math.cos(yaw)]
+        ;[X, Y] = [X * Math.cos(roll) - Y * Math.sin(roll), X * Math.sin(roll) + Y * Math.cos(roll)]
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + X * L, cy - Y * L); ctx.stroke()
+      }
+      axis(1, 0, 0, 'rgba(224,107,94,0.9)'); axis(0, 1, 0, 'rgba(99,181,127,0.9)'); axis(0, 0, 1, 'rgba(127,180,232,0.9)')
+      // gaze arrow from between the eyes
+      if (vals['gaze.horizontal'] != null) {
+        const gx = -vals['gaze.horizontal'], gy = -vals['gaze.vertical'] // screen: subject's left is viewer's right
+        const ex = cx, ey = oy + (y0 + 0.4 * (y1 - y0)) * dh
+        ctx.strokeStyle = '#d7dee7'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex + gx * L * 1.2, ey + gy * L * 1.2); ctx.stroke()
+        ctx.fillStyle = '#d7dee7'; ctx.beginPath(); ctx.arc(ex + gx * L * 1.2, ey + gy * L * 1.2, 3, 0, Math.PI * 2); ctx.fill()
+      }
+    }
+    // active AUs (right side of frame) with names and bars, amber when deviating from baseline
+    const aus = Object.entries(vals).filter(([k, val]) => k.startsWith('au.AU') && !/AU[LR]/.test(k) && val >= 0.3).sort((a, b) => b[1] - a[1]).slice(0, 8)
+    const px = rect.width - 232, py0 = 44
+    ctx.fillStyle = 'rgba(5,7,10,0.65)'; ctx.fillRect(px - 8, py0 - 14, 232, 16 + Math.max(1, aus.length) * 18 + 8)
+    ctx.fillStyle = '#7c8794'; ctx.fillText('ACTION UNITS (occurrence probability)', px, py0 - 4)
+    aus.forEach(([k, val], i) => {
+      const y = py0 + 12 + i * 18
+      const b = laneBase[k]
+      const z = b && b.scale > 0 ? (val - b.center) / b.scale : null
+      const hot = z != null && z >= 4
+      ctx.fillStyle = hot ? '#d4a24c' : '#d7dee7'
+      ctx.fillText(`${k.slice(3)} ${auName(k)}`.slice(0, 26), px, y)
+      ctx.fillStyle = '#1f2933'; ctx.fillRect(px + 150, y - 4, 60, 8)
+      ctx.fillStyle = hot ? '#d4a24c' : '#7fb4e8'; ctx.fillRect(px + 150, y - 4, 60 * val, 8)
+      ctx.fillStyle = '#7c8794'; ctx.fillText(z != null ? `${z >= 0 ? '+' : ''}${z.toFixed(0)}` : '', px + 214, y)
+    })
+    if (!aus.length) { ctx.fillStyle = '#4b5663'; ctx.fillText('no AU above 0.30', px, py0 + 12) }
+    // pattern meter (left side)
+    const pats = patternScores(vals).filter((p) => p.score >= 0.25).slice(0, 3)
+    if (pats.length) {
+      const lx = 12, ly0 = rect.height - 36 - pats.length * 18
+      ctx.fillStyle = 'rgba(5,7,10,0.65)'; ctx.fillRect(lx - 6, ly0 - 16, 230, pats.length * 18 + 26)
+      ctx.fillStyle = '#7c8794'; ctx.fillText('PATTERN (FACS appearance)', lx, ly0 - 6)
+      pats.forEach((p, i) => {
+        const y = ly0 + 10 + i * 18
+        const on = p.score >= PATTERN_ENTER
+        ctx.fillStyle = on ? '#b48ce6' : '#7c8794'; ctx.fillText(p.name, lx, y)
+        ctx.fillStyle = '#1f2933'; ctx.fillRect(lx + 110, y - 4, 80, 8)
+        ctx.fillStyle = on ? '#b48ce6' : '#4b5663'; ctx.fillRect(lx + 110, y - 4, 80 * p.score, 8)
+        ctx.fillStyle = '#7c8794'; ctx.fillText(p.score.toFixed(2), lx + 196, y)
+      })
+    }
+    // blink + speech indicators (top center)
+    const now = performance.now()
+    const blink = now - lastBlinkAt < 300
+    ctx.fillStyle = blink ? '#7fb4e8' : 'rgba(127,180,232,0.25)'; ctx.beginPath(); ctx.arc(rect.width / 2 - 40, 16, 5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#7c8794'; ctx.fillText('blink', rect.width / 2 - 30, 16)
+    const sp = audioLast?.speech_prob ?? 0
+    ctx.fillStyle = sp >= 0.5 ? '#5fb8ae' : 'rgba(95,184,174,0.25)'; ctx.beginPath(); ctx.arc(rect.width / 2 + 30, 16, 5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#7c8794'; ctx.fillText(audioLast?.f0_hz ? `speech ${audioLast.f0_hz.toFixed(0)} Hz` : 'speech', rect.width / 2 + 40, 16)
+    // event flashes near the face box top
+    flashes = flashes.filter((f) => f.until > now)
+    flashes.forEach((f, i) => {
+      const alpha = Math.min(1, (f.until - now) / 800)
+      ctx.globalAlpha = alpha
+      const fx = m.bbox ? ox + m.bbox[0] * dw : 12, fy = (m.bbox ? oy + m.bbox[1] * dh : 60) - 12 - i * 18
+      ctx.fillStyle = 'rgba(5,7,10,0.75)'; ctx.fillRect(fx - 4, fy - 9, ctx.measureText(f.text).width + 8, 16)
+      ctx.fillStyle = f.color; ctx.fillText(f.text, fx, fy)
+      ctx.globalAlpha = 1
+    })
   }
 
   function drawLanes(now: number) {
@@ -222,6 +307,7 @@
       <button class="primary" onclick={start}>start</button>
     {/if}
     <button onclick={() => (showProtocol = !showProtocol)}>{showProtocol ? 'hide protocol' : 'protocol'}</button>
+    <label><input type="checkbox" bind:checked={showOverlay} /> overlays</label>
     <span class="status mono" class:rec={state === 'running'}>{state}{detail ? ': ' + detail : ''}</span>
     {#if sessionId}<button onclick={() => ondone(sessionId!)}>open session {sessionId}</button>{/if}
   </div>

@@ -27,17 +27,42 @@ class Prototype:
     """AU columns (``au.AUx``) whose mean probability forms the pattern score."""
     unilateral: tuple[tuple[str, str], ...] = ()
     """(left, right) AU pairs whose *difference* forms the score (contempt)."""
+    absent: tuple[str, ...] = ()
+    """AU columns that must stay low (probability < ABSENT_MAX) for the pattern to count."""
+    note: str = ""
 
 
 PROTOTYPES: tuple[Prototype, ...] = (
-    Prototype("happiness", ("au.AU6", "au.AU12")),
+    Prototype(
+        "happiness", ("au.AU6", "au.AU12"), note="Duchenne smile: cheek raise with lip corner pull"
+    ),
+    Prototype(
+        "social smile",
+        ("au.AU12",),
+        absent=("au.AU6",),
+        note="lip corners without cheek raise; polite or masking smiles look like this",
+    ),
+    Prototype(
+        "brow flash",
+        ("au.AU1", "au.AU2"),
+        absent=("au.AU5", "au.AU26"),
+        note="brow raise without eye widening or jaw drop: conversational emphasis, greeting",
+    ),
     Prototype("surprise", ("au.AU1", "au.AU2", "au.AU5", "au.AU26")),
     Prototype("fear", ("au.AU1", "au.AU2", "au.AU4", "au.AU5", "au.AU7", "au.AU20", "au.AU26")),
     Prototype("anger", ("au.AU4", "au.AU5", "au.AU7", "au.AU23")),
     Prototype("sadness", ("au.AU1", "au.AU4", "au.AU15")),
     Prototype("disgust", ("au.AU9", "au.AU15")),
     Prototype("contempt", (), (("au.AUL12", "au.AUR12"), ("au.AUL14", "au.AUR14"))),
+    Prototype("lip press", ("au.AU24",), absent=("au.AU12",), note="lips pressed together"),
+    Prototype(
+        "brow furrow",
+        ("au.AU4",),
+        absent=("au.AU1", "au.AU2", "au.AU12"),
+        note="brow lowering alone: concentration, bright light, displeasure",
+    ),
 )
+ABSENT_MAX = 0.35
 
 PATTERN_ENTER = 0.55
 PATTERN_EXIT = 0.40
@@ -59,6 +84,15 @@ def pattern_scores(
             stack = np.vstack([np.asarray(c, dtype=np.float64) for c in cols if c is not None])
             # geometric-ish combination: all required AUs must be present, weakest matters
             score = 0.5 * np.nanmean(stack, axis=0) + 0.5 * np.nanmin(stack, axis=0)
+            if p.absent:
+                acols = [signals.get(c) for c in p.absent]
+                if any(c is None for c in acols):
+                    continue
+                astack = np.vstack(
+                    [np.asarray(c, dtype=np.float64) for c in acols if c is not None]
+                )
+                # any "absent" AU above ABSENT_MAX cancels the pattern (it is then another one)
+                score = np.where(np.nanmax(astack, axis=0) < ABSENT_MAX, score, 0.0)
         else:
             diffs = []
             for left, right in p.unilateral:
@@ -77,7 +111,10 @@ def pattern_scores(
 
 def _au_list(p: Prototype) -> str:
     if p.required:
-        return "+".join(c[3:] for c in p.required)
+        base = "+".join(c[3:] for c in p.required)
+        if p.absent:
+            base += " without " + "/".join(c[3:] for c in p.absent)
+        return base
     return "one-sided " + "/".join(f"{left[4:]}" for left, _ in p.unilateral)
 
 

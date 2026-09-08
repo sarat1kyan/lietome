@@ -57,6 +57,8 @@ class StreamingAudioAnalyzer:
         self.events: list[Event] = []
         self._id_start = id_start
         self._warmup_us = cfg.events.warmup_ms * 1000
+        self.hops: list[tuple[int, float, float, float, bool]] = []
+        """(t_us, speech_prob, f0_hz or nan, energy_db, voiced) per 20 ms hop."""
 
     def push(self, pcm: npt.NDArray[np.float32], t_us: int) -> list[AudioFrameResult]:
         """Append samples whose first sample occurs at ``t_us``; return per-hop results."""
@@ -124,6 +126,9 @@ class StreamingAudioAnalyzer:
                     if e.start_us >= self._warmup_us
                 ]
                 self.events.extend(new_events)
+            self.hops.append(
+                (center_us, self._speech_prob, f0 if f0 is not None else math.nan, energy, voiced)
+            )
             out.append(
                 AudioFrameResult(
                     t_us=center_us,
@@ -139,6 +144,18 @@ class StreamingAudioAnalyzer:
             self._consumed += HOP
             self._buf_t0_us += int(HOP * 1_000_000 / RATE)
         return out
+
+    def f0_z(self) -> tuple[np.ndarray, np.ndarray] | None:
+        """(t_us, robust z of voiced F0 against the speaking-state or 'all' baseline)."""
+        snap = self.baseline.snapshot
+        if snap is None or not self.hops:
+            return None
+        sb = snap.signals.get("voice.f0_hz")
+        if sb is None or not (math.isfinite(sb.center) and sb.scale > 0):
+            return None
+        t = np.array([h[0] for h in self.hops], dtype=np.int64)
+        f0 = np.array([h[2] for h in self.hops], dtype=float)
+        return t, (f0 - sb.center) / sb.scale
 
     def finish(self) -> list[Event]:
         if self.detector is not None:

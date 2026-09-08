@@ -73,6 +73,12 @@ signals = [
 [events.z_enter_by_prefix]   # noisier classifier outputs need a higher bar; exit shifts by the same amount
 "au." = 4.0
 "blendshape." = 4.0
+"gaze." = 5.0                 # glances are ordinary; only large sustained shifts
+"asym." = 4.0
+"head.speed_deg_s" = 5.0     # heavy-tailed: quick turns are frequent
+"blendshape.jawOpen" = 6.0   # articulation: bimodal in speech, robust scale underestimates spread
+"au.AU25" = 6.0
+"au.AU26" = 6.0
 
 [storage]
 store_landmarks = false      # 478x3 per frame is large and biometric; off by default

@@ -52,6 +52,11 @@ def test_session_detail_events_features(client: TestClient) -> None:
     ).json()
     assert len(f["t_us"]) == 20 and f["decimated"] and f["rows"] == 90
     assert set(f["signals"]) == {"blendshape.browDownLeft", "eye.aspect_ratio_mean", "quality"}
+    fr = client.get(f"/api/sessions/{sid}/frame", params={"t_us": 1_500_000}).json()
+    assert fr["t_us"] is not None and abs(fr["t_us"] - 1_500_000) <= 40_000
+    assert "eye.aspect_ratio_mean" in fr["values"] and "t_us" not in fr["values"]
+    assert fr["baseline"]["eye.aspect_ratio_mean"]["scale"] > 0
+    assert client.get(f"/api/sessions/{sid}/frame", params={"t_us": -5}).status_code == 422
     thumb_ok = [e for e in ev if e["event_type"] != "blink"]
     r = client.get(f"/api/sessions/{sid}/thumbnails/{thumb_ok[0]['event_id']}")
     assert r.status_code in (200, 404)

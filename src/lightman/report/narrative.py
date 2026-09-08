@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+import numpy as np
+
 from lightman.core.timebase import format_timecode
 from lightman.features.action_units import au_description
 from lightman.schema import Event
@@ -130,10 +132,20 @@ def build_narrative(
         by = Counter(t for e in expr for t in e.tags if t not in ("expression", "brief"))
         brief = sum("brief" in e.tags for e in expr)
         listed = ", ".join(f"{k} ({n})" for k, n in by.most_common(4))
+        mean_ms = float(np.mean([(e.end_us - e.start_us) / 1000 for e in expr]))
         lines.append(
-            f"{len(expr)} FACS expression patterns appeared ({brief} brief, under 500 ms): "
-            f"{listed}. These name what the face looked like, not what was felt."
+            f"{len(expr)} FACS expression patterns appeared ({brief} brief, under 500 ms; "
+            f"mean {mean_ms:.0f} ms; {60 * len(expr) / post_s:.1f} per minute): {listed}. "
+            "These name what the face looked like, not what was felt."
         )
+        duch = by.get("happiness", 0)
+        social = by.get("social smile", 0)
+        if duch + social >= 3:
+            lines.append(
+                f"Smiles: {duch} with cheek raise (AU6+12, Duchenne) and {social} lip-corner only "
+                "(AU12 without AU6). The split is descriptive; both kinds occur in genuine "
+                "enjoyment and in politeness."
+            )
     lines.append(
         "These are measurements of movement and voice relative to this person's own baseline. They "
         "do not identify emotions, intent or truthfulness."

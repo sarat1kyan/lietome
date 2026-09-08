@@ -116,7 +116,7 @@ def detect_deviation_events(
         for s in segs:
             start = int(t_us[s.start_idx])
             end = segment_end_us(t_us, s.end_idx, period)
-            if end - start < cfg.min_duration_ms * 1000:
+            if end - start < cfg.min_duration_for(name) * 1000:
                 continue
             if any(start < b + 150_000 and end > a - 150_000 for a, b in exclude):
                 continue  # overlaps (with 150 ms margin) an excluded interval, e.g. a blink

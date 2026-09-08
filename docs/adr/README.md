@@ -22,3 +22,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 015 | Network access: token and self-signed TLS | accepted |
 | 016 | Interview protocol mode | accepted |
 | 017 | Expression patterns and the deception-research cue layer | accepted |
+| 018 | Exclusion AUs in prototypes, per-signal event rules, frame readout | accepted |

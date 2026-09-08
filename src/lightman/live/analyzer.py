@@ -144,6 +144,8 @@ class LiveAnalyzer:
         self._au_smooth: dict[str, StreamingMedian] = {}
         self.adaptive: AdaptiveBaseline | None = None
         self.markers: list[Marker] = []
+        self.audio_stream: Any = None
+        """StreamingAudioAnalyzer attached by the WebSocket endpoint (optional)."""
         self.expressions: StreamingExpressionDetector | None = None
         self._prev_head: tuple[float, float, float] | None = None
         self._prev_t_us: int | None = None
@@ -473,6 +475,33 @@ class LiveAnalyzer:
             baseline_window_us=(0, snap.window_end_us),
             notes=notes,
         )
+        voice_f0_z = None
+        if self.audio_stream is not None and getattr(self.audio_stream, "hops", None):
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+
+            hops = self.audio_stream.hops
+            tbl = pa.table(
+                {
+                    "t_us": pa.array([h[0] for h in hops], type=pa.int64()),
+                    "voice.speech_prob": pa.array([h[1] for h in hops], type=pa.float32()),
+                    "voice.f0_hz": pa.array([h[2] for h in hops], type=pa.float32()),
+                    "voice.energy_db": pa.array([h[3] for h in hops], type=pa.float32()),
+                    "voice.voiced_prob": pa.array(
+                        [1.0 if h[4] else 0.0 for h in hops], type=pa.float32()
+                    ),
+                }
+            )
+            af_path = session_dir / "audio_features.parquet"
+            pq.write_table(tbl, af_path, compression="zstd")
+            outputs.append(_artifact(af_path, "parquet"))
+            asnap = self.audio_stream.baseline.snapshot
+            if asnap is not None:
+                (session_dir / "audio_baseline.json").write_text(
+                    json.dumps(_nan_to_none(asnap.model_dump(mode="json")), indent=2)
+                )
+                outputs.append(_artifact(session_dir / "audio_baseline.json", "json"))
+            voice_f0_z = self.audio_stream.f0_z()
         protocol = None
         sig_cols = {k: cols[k].astype(np.float64) for k in snap.signals if k in cols}
         ref_blinks = [e.start_us for e in self.events if e.event_type == "blink"]
@@ -491,7 +520,7 @@ class LiveAnalyzer:
             signals=sig_cols,
             baseline_center={k: v.center for k, v in snap.signals.items()},
             baseline_scale={k: v.scale for k, v in snap.signals.items()},
-            voice_f0_z=None,
+            voice_f0_z=voice_f0_z,
             blink_times_us=ref_blinks,
             reference_blink_rate=ref_n or None,
             response_latency_ms=None,
@@ -505,6 +534,7 @@ class LiveAnalyzer:
                 speaking=cols["speaking"].astype(bool) if self.has_audio else None,
                 session_end_us=analysis["duration_us"],
                 cue_inputs=cue_inputs,
+                voice_f0_z=voice_f0_z,
             )
             (session_dir / "protocol.json").write_text(
                 json.dumps(_nan_to_none(protocol.model_dump(mode="json")), indent=2)

@@ -121,6 +121,48 @@ class SessionStore:
             out["signals"][c] = [None if not np.isfinite(v) else round(float(v), 5) for v in arr]
         return out
 
+    def frame(self, session_id: str, t_us: int) -> dict[str, Any]:
+        """All signal values at the frame nearest ``t_us`` plus baseline center/scale per signal.
+
+        The baseline used is the speaking/silent state baseline when the session has one
+        and the frame has a speaking flag, else the session-wide baseline.
+        """
+        d = self._dir(session_id)
+        p = d / "features.parquet"
+        if not p.is_file():
+            return {"t_us": None, "values": {}, "baseline": {}, "state": None}
+        pf = pq.ParquetFile(p)
+        columns = [c for c in pf.schema_arrow.names if SIGNAL_RE.match(c) or c == "t_us"]
+        tbl = pf.read(columns=columns)
+        ts = tbl.column("t_us").to_numpy().astype(np.int64)
+        if ts.size == 0:
+            return {"t_us": None, "values": {}, "baseline": {}, "state": None}
+        i = int(np.clip(np.searchsorted(ts, t_us), 0, ts.size - 1))
+        if i > 0 and abs(int(ts[i - 1]) - t_us) < abs(int(ts[i]) - t_us):
+            i -= 1
+        values: dict[str, float | None] = {}
+        for c in columns:
+            if c == "t_us":
+                continue
+            v = tbl.column(c)[i].as_py()
+            values[c] = None if v is None or not np.isfinite(float(v)) else round(float(v), 5)
+        speaking = values.get("speaking")
+        state = None
+        base: dict[str, Any] = {}
+        states = self.read_json(session_id, "state_baselines.json")
+        if isinstance(states, dict) and speaking is not None:
+            state = "speaking" if speaking >= 0.5 else "silent"
+            base = states.get(state) or states.get("all") or {}
+        if not base:
+            base = self.read_json(session_id, "baseline.json") or {}
+        sigs = base.get("signals", {}) if isinstance(base, dict) else {}
+        baseline = {
+            k: {"center": v.get("center"), "scale": v.get("scale")}
+            for k, v in sigs.items()
+            if isinstance(v, dict)
+        }
+        return {"t_us": int(ts[i]), "values": values, "baseline": baseline, "state": state}
+
     def thumbnail(self, session_id: str, event_id: str) -> Path:
         d = self._dir(session_id)
         if not EVENT_ID_RE.match(event_id):
