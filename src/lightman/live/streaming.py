@@ -257,7 +257,10 @@ class StreamingDeviationDetector:
                     self._open[name] = _OpenRun(t_us, t_us, z, v, [quality], state=state)
             elif not valid or abs(z) < exit_:
                 end = t_us  # closes at the first non-qualifying frame
-                if end - run.start_us >= self.cfg.min_duration_ms * 1000 and not run.emitted_open:
+                if (
+                    end - run.start_us >= self.cfg.min_duration_for(name) * 1000
+                    and not run.emitted_open
+                ):
                     out.append(self._event(name, run, end, provisional=False))
                 del self._open[name]
             else:
@@ -274,7 +277,10 @@ class StreamingDeviationDetector:
         out: list[Event] = []
         end = self._last_t_us + self.period_us
         for name, run in list(self._open.items()):
-            if end - run.start_us >= self.cfg.min_duration_ms * 1000 and not run.emitted_open:
+            if (
+                end - run.start_us >= self.cfg.min_duration_for(name) * 1000
+                and not run.emitted_open
+            ):
                 out.append(self._event(name, run, end, provisional=False))
         self._open.clear()
         return out

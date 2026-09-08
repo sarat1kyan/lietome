@@ -120,3 +120,21 @@ def test_cue_profile_flags_direction_and_reports_effect_sizes() -> None:
     assert "not a probability" in prof["caveat"]
     assert {c.key for c in CUES} == set(by)
     assert by["pitch"]["effect_size"] == 0.21 and "DePaulo" in by["pitch"]["source"]
+
+
+def test_absent_aus_split_smiles_and_brow_flash() -> None:
+    n = 20
+    sig = _aus(n, AU12=(0, 10), AU6=(0, 5), AU1=(10, 20), AU2=(10, 20))
+    sig["au.AU24"] = np.full(n, 0.1)
+    scores = pattern_scores(sig, n)
+    # frames 0-4: cheek raise + lip corner = happiness, not a social smile
+    assert scores["happiness"][2] >= PATTERN_ENTER and scores["social smile"][2] == 0.0
+    # frames 5-9: lip corner alone = social smile, happiness weak
+    assert scores["social smile"][7] >= PATTERN_ENTER and scores["happiness"][7] < PATTERN_ENTER
+    # frames 10-19: AU1+2 without AU5/AU26 = brow flash; surprise stays low
+    assert scores["brow flash"][15] >= PATTERN_ENTER and scores["surprise"][15] < PATTERN_ENTER
+    # when the eyes widen too, the brow flash gives way to surprise
+    sig["au.AU5"][10:20] = 0.9
+    sig["au.AU26"][10:20] = 0.9
+    scores = pattern_scores(sig, n)
+    assert scores["brow flash"][15] == 0.0 and scores["surprise"][15] >= PATTERN_ENTER

@@ -10,6 +10,7 @@
   import LiveView from './components/LiveView.svelte'
   import SummaryCard from './components/SummaryCard.svelte'
   import ProtocolTable from './components/ProtocolTable.svelte'
+  import FramePanel from './components/FramePanel.svelte'
 
   let sessions = $state<SessionSummary[]>([])
   let current = $state<SessionSummary | null>(null)
@@ -106,6 +107,7 @@
     {#if error}<div class="error">{error}</div>{/if}
     {#if current && detail}
       <VideoStage session={current} {events} {selected} bind:playhead />
+      <FramePanel sessionId={current.session_id} {playhead} />
       <Timeline {events} {video} {audio} {protocol} baseline={detail.baseline} audioBaseline={detail.audio_baseline}
                 duration={current.duration_us ?? 0} bind:playhead {selected} onpick={pick} onseek={seekTo} />
       <ProtocolTable {protocol} onseek={seekTo} />

@@ -1,4 +1,4 @@
-import type { FeatureSeries, LmEvent, SessionDetail, SessionSummary } from './types'
+import type { FeatureSeries, FrameSnapshot, LmEvent, SessionDetail, SessionSummary } from './types'
 
 // Demo mode: a build can inline a session (window.__LIGHTMAN_DEMO__) so the UI runs with no server.
 declare global {
@@ -39,6 +39,10 @@ export const api = {
     if (d) return d.features[id][table]
     const q = new URLSearchParams({ table, signals: signals.join(','), max_points: String(maxPoints) })
     return getJson(`./api/sessions/${id}/features?${q}`)
+  },
+  async frame(id: string, tUs: number): Promise<FrameSnapshot> {
+    if (demo()) return { t_us: null, values: {}, baseline: {}, state: null }
+    return getJson(`./api/sessions/${id}/frame?t_us=${Math.max(0, Math.round(tUs))}`)
   },
   async protocol(id: string): Promise<any> {
     const d = demo()

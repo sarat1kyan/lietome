@@ -93,6 +93,12 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   range far wider than the speaking calibration (browInnerUp p90 0.08 vs 0.61). Bounded
   adaptive baseline added (ADR-014): replay 336 -> 133/min (session 4), 381 -> 117/min
   (session 3). Remaining rate is dominated by jaw/brow motion during animated speech.
+* Session 5 (3:04 with calibration v2 + adaptive): 131 deviations/min, 59 episodes, 13
+  expression patterns (8 happiness, 5 surprise, up to 4 s), pitch cue not evaluable live.
+  Gaze and head speed were sub-second glances; jaw/AU25/26 were articulation. ADR-018:
+  exclusion AUs (social smile, brow flash, lip press, brow furrow), per-signal thresholds and
+  minimum durations, live voice table + pitch cue, frame readout and live overlays. Replay
+  404 -> 268 deviations (167 -> 111/min).
 
 ## Known limitations / issues
 

@@ -5,6 +5,16 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 ## [Unreleased]
 
 ### Added
+- Expression prototypes with exclusion AUs: social smile, brow flash, lip press, brow furrow;
+  Duchenne vs lip-corner smile counts in the narrative (ADR-018).
+- Per-signal event rules: entry thresholds for gaze, head speed and articulation signals,
+  longer minimum duration for gaze and head speed; most specific prefix wins.
+- Live sessions write audio_features.parquet and audio_baseline.json; pitch cue evaluated live.
+- GET /api/sessions/{id}/frame: all signals at the nearest frame with the state baseline.
+- Sessions view: frame readout at the playhead (AU bars with FACS names and z, pattern meter,
+  head pose, gaze, eye opening).
+- Live self-view overlays: AU bars, pattern meter, head axes, gaze arrow, blink and speech
+  indicators, event flashes; toggle in the toolbar.
 - Project foundations: uv/ruff/mypy/pytest toolchain, Apache-2.0 license, CI.
 - Media ingestion with PyAV: probing, safety limits, PTS-accurate decoding, rotation, VFR.
 - Model registry with SHA-256-pinned manifest and verified download/import.

@@ -53,3 +53,19 @@ def test_streaming_audio_emits_hops_and_detects_pitch_jump() -> None:
     assert any("pitch" in lab and "increase" in lab for lab in labels), labels
     assert all(e.source == "audio" for e in events)
     assert all(e.start_us >= 3_000_000 - 200_000 for e in events)
+
+
+def test_streaming_audio_keeps_hops_and_reports_pitch_z() -> None:
+    cfg = LightmanConfig(baseline=BaselineConfig(window_s=2.0, min_samples=10, good_samples=30))
+    an = StreamingAudioAnalyzer(cfg, _FakeVAD(), subject_id="s")  # type: ignore[arg-type]
+    x = np.concatenate([_tone(150.0, 3.0), _tone(260.0, 1.0)])
+    chunk = 2048
+    for i in range(0, x.size - chunk + 1, chunk):
+        an.push(x[i : i + chunk], int(i * 1_000_000 / RATE))
+    assert len(an.hops) > 150 and an.hops[0][0] < an.hops[-1][0]
+    fz = an.f0_z()
+    assert fz is not None
+    t, z = fz
+    assert t.shape == z.shape == (len(an.hops),)
+    late = z[t > 3_200_000]
+    assert np.nanmedian(late) > 3.0  # 260 Hz against a 150 Hz baseline is a large rise

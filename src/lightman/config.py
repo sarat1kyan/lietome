@@ -104,10 +104,23 @@ class EventsConfig(BaseModel):
     z_enter: float = Field(default=3.0, gt=0, description="|robust z| to open an event")
     z_exit: float = Field(default=2.0, gt=0, description="|robust z| to close (hysteresis)")
     z_enter_by_prefix: dict[str, float] = Field(
-        default_factory=lambda: {"au.": 4.0, "blendshape.": 4.0},
+        default_factory=lambda: {
+            "au.": 4.0,
+            "blendshape.": 4.0,
+            "gaze.": 5.0,
+            "asym.": 4.0,
+            "head.speed_deg_s": 5.0,
+            "blendshape.jawOpen": 6.0,
+            "au.AU25": 6.0,
+            "au.AU26": 6.0,
+        },
         description="Higher entry thresholds for noisy classifier outputs; exit shifts alike",
     )
     min_duration_ms: int = Field(default=120, ge=0)
+    min_duration_by_prefix: dict[str, int] = Field(
+        default_factory=lambda: {"gaze.": 400, "head.speed_deg_s": 250},
+        description="Longer minimum where brief excursions are ordinary (glances, head turns)",
+    )
     merge_gap_ms: int = Field(default=200, ge=0)
     min_frame_quality: float = Field(default=0.4, ge=0, le=1)
     warmup_ms: int = Field(
@@ -157,10 +170,18 @@ class EventsConfig(BaseModel):
 
     def thresholds_for(self, signal: str) -> tuple[float, float]:
         """(enter, exit) for a signal, honoring prefix overrides."""
-        for prefix, enter in self.z_enter_by_prefix.items():
-            if signal.startswith(prefix):
-                return enter, self.z_exit + (enter - self.z_enter)
+        hits = [p for p in self.z_enter_by_prefix if signal.startswith(p)]
+        if hits:
+            enter = self.z_enter_by_prefix[max(hits, key=len)]  # most specific prefix wins
+            return enter, self.z_exit + (enter - self.z_enter)
         return self.z_enter, self.z_exit
+
+    def min_duration_for(self, signal: str) -> int:
+        """Minimum event duration in ms for a signal, honoring prefix overrides."""
+        hits = [p for p in self.min_duration_by_prefix if signal.startswith(p)]
+        if hits:
+            return self.min_duration_by_prefix[max(hits, key=len)]
+        return self.min_duration_ms
 
     blink_min_ms: int = Field(default=50, ge=0)
     blink_max_ms: int = Field(default=500, ge=0)

@@ -140,6 +140,7 @@ async def live_endpoint(
                         source_description=str(data.get("source", "browser"))[:80],
                     )
                     analyzer.has_audio = audio is not None
+                    analyzer.audio_stream = audio
                     await ws.send_text(
                         json.dumps({"type": "ready", "session_id": analyzer.session_id})
                     )

@@ -107,6 +107,11 @@ concentration and bright light; contempt-like asymmetry appears in speech. "Brie
 (under 500 ms) are candidates for what the microexpression literature studies, at a frame rate
 (13-15 fps live) too low to confirm them.
 
+Some prototypes carry exclusions ("AU12 without AU6" is a social smile, "AU1+2 without
+AU5/26" a brow flash). The exclusion sharpens the description; it does not make the label
+truer. Duchenne smiles (with AU6) occur in politeness too, and lip-corner-only smiles occur in
+genuine amusement. The counts of each kind are reported as counts.
+
 ## Deception-research cues
 
 The cue profile lists literature cues (DePaulo et al. 2003; Sporer & Schwandt 2006; Leal &

@@ -76,3 +76,10 @@ export interface FeatureSeries {
   decimated: boolean
   rows: number
 }
+
+export interface FrameSnapshot {
+  t_us: number | null
+  values: Record<string, number | null>
+  baseline: Record<string, { center: number | null; scale: number | null }>
+  state: 'speaking' | 'silent' | null
+}

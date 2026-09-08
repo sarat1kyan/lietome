@@ -143,3 +143,17 @@ def test_blink_detection_relative_threshold_and_exclusion() -> None:
         exclude_intervals=[(b.start_us, b.end_us) for b in blinks],
     )
     assert dev == []  # eye deviations fully covered by blink/closure events are suppressed
+
+
+def test_prefix_overrides_pick_most_specific_prefix() -> None:
+    from lightman.config import EventsConfig
+
+    cfg = EventsConfig()
+    assert cfg.thresholds_for("head.yaw_deg") == (3.0, 2.0)
+    assert cfg.thresholds_for("au.AU4") == (4.0, 3.0)
+    assert cfg.thresholds_for("blendshape.jawOpen") == (6.0, 5.0)  # beats "blendshape."
+    assert cfg.thresholds_for("au.AU26") == (6.0, 5.0)
+    assert cfg.thresholds_for("gaze.vertical") == (5.0, 4.0)
+    assert cfg.min_duration_for("gaze.vertical") == 400
+    assert cfg.min_duration_for("head.speed_deg_s") == 250
+    assert cfg.min_duration_for("head.yaw_deg") == 120
