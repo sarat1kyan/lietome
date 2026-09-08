@@ -65,6 +65,15 @@ browser), timeline lanes in robust-SD units with an event strip, and an evidence
 contributors and confidence. `npm run build:demo` produces a single HTML file with one session
 inlined for sharing a look without a server.
 
+### Expression patterns and research cues
+
+FACS prototype patterns (happiness 6+12, surprise 1+2+5+26, fear, anger, sadness, disgust,
+contempt) appear as violet events with their AU list and duration; under 500 ms they are tagged
+"brief". They describe the face, not the feeling. A checklist of deception-research cues
+(pitch, pressed lips, movement, response latency, blink change) is shown per session and per
+question with the published effect sizes next to each; it is a description, never a
+probability or verdict (ADR-017).
+
 ### Interview protocol (live tab, "protocol")
 
 Write questions one per line (`C:` control, `R:` relevant, `N:` neutral, optional `[truth]`

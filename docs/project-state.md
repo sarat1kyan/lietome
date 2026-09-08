@@ -1,6 +1,6 @@
 # Project state
 
-Last updated: 2026-09-05 (session 4: enhancements pass, network access, protocol mode). Facts only.
+Last updated: 2026-09-05 (session 4: enhancements pass, network access, protocol mode, expressions and cues). Facts only.
 
 ## Phase
 
@@ -36,6 +36,9 @@ published as release `models-v1` on the repository; no package release.
   over the WebSocket; first real webcam run happened on the maintainer's machine via the CLI.
 * Guided calibration in the live tab (settle 12 s, read passage 18 s) with phase hints to the
   server and a baseline-ready summary; protocol in docs/calibration.md.
+* Expression patterns (EMFACS prototypes, brief tag) offline and live; deception-research cue
+  checklist with effect sizes per session and per question (ADR-017). UI: violet events,
+  expressions filter, summary card chips and cue list, protocol table columns.
 * Interview protocol mode (ADR-016): script, ask/end/note markers, protocol.json per-question
   summaries (latency, speech, deviations, episodes, top signals, blink rate, pitch), category
   comparison with permutation p, experimental AUROC against expected classes, UI table and
