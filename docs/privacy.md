@@ -20,7 +20,10 @@ There is no telemetry, no crash reporting, no analytics.
 
 ## Web UI
 
-`lightman serve` binds to 127.0.0.1 by default and has no authentication; do not expose it.
+`lightman serve` binds to 127.0.0.1 by default without authentication. With `--host` set to a
+non-loopback address it requires a random token (URL once, then cookie) and serves HTTPS with
+a self-signed certificate (ADR-015); anyone holding the URL can read sessions while the server
+runs.
 The video stage plays a file you attach from disk through the browser's object URL; the file
 is not uploaded. `POST /api/analyze` stores the uploaded file only for the duration of the
 analysis unless `keep_media` is requested, in which case it is kept as `media.mp4` in the

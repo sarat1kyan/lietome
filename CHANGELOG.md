@@ -24,6 +24,11 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 - Web UI: `lightman serve` (FastAPI, localhost) + Svelte 5 workstation (session rail, video
   stage with local playback, canvas timeline in robust-SD units, evidence panel, quality
   strip); upload-and-analyze endpoint; single-file demo build.
+- Network serving: token + self-signed TLS when bound off localhost (ADR-015).
+- New signals: gaze proxy, brow/smile asymmetry, head speed; blur and luminance in frame
+  quality; blink-rate change events; plain-language session narrative in analysis.json,
+  report and UI; live lanes in SD units fed by the adaptive baseline; summary card with top
+  contributors; keyboard scrubbing (arrows, j/k).
 - Bounded adaptive baseline after calibration (ADR-014): EWMA center/scale per state,
   anchored to the calibration, offline and live.
 - Calibration v2: 40 s window with a free-talk phase; per-frame `speaking` column in

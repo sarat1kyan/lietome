@@ -28,6 +28,10 @@ them separate in the data model, the report, and the language.
   demographics. Left/right variants are the least reliable outputs.
 * **Head pose**: Euler angles from MediaPipe's canonical-face transform. Fine for *changes*;
   absolute accuracy and sign conventions are unverified.
+* **Gaze proxy**: combinations of MediaPipe iris blendshapes, not a calibrated gaze estimate;
+  fine for "looked away relative to baseline", not for where on the screen.
+* **Blink rate**: has a literature (attention, load, dryness, screen use, speech). The event
+  states the rate change only.
 * **Eye aspect ratio**: purely geometric, well-understood (Soukupova & Cech 2016). Blink
   thresholds are subject-relative because EAR varies with eye shape and camera angle.
 * **Quality**: a heuristic. It gates statistics; it is not a measurement of anything
