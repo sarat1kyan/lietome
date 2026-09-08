@@ -21,3 +21,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 014 | Bounded adaptive baseline | accepted |
 | 015 | Network access: token and self-signed TLS | accepted |
 | 016 | Interview protocol mode | accepted |
+| 017 | Expression patterns and the deception-research cue layer | accepted |

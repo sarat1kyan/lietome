@@ -24,6 +24,8 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 - Web UI: `lightman serve` (FastAPI, localhost) + Svelte 5 workstation (session rail, video
   stage with local playback, canvas timeline in robust-SD units, evidence panel, quality
   strip); upload-and-analyze endpoint; single-file demo build.
+- Expression pattern events from FACS prototypes (brief tag under 500 ms) and a
+  deception-research cue checklist with effect sizes per session and per question (ADR-017).
 - Interview protocol mode: question script, timestamped markers over the live WebSocket,
   protocol.json with per-question summaries, category comparison and experimental AUROC;
   protocol table and timeline spans in the UI; narrative lines (ADR-016).

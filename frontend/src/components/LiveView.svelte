@@ -27,7 +27,7 @@
   let calib = $state<{ name: string; instruction: string; remaining: number; speaking: boolean } | null>(null)
   let baselineInfo = $state<LiveBaselineMsg | null>(null)
   let lastPhaseSpeaking: boolean | null = null
-  const shown = $derived(showAll ? events : events.filter((e) => e.event_type === 'episode' || e.source === 'audio'))
+  const shown = $derived(showAll ? events : events.filter((e) => e.event_type === 'episode' || e.event_type === 'expression_pattern' || e.event_type === 'blink_rate_change' || e.source === 'audio'))
   const sev = (v: number) => (v > 20 ? '>20' : v.toFixed(1))
 
   const WINDOW_US = 60e6
@@ -287,10 +287,10 @@
           {/if}
         </div>
       {/if}
-      <div class="side-hdr"><span class="eyebrow">{showAll ? 'all events' : 'episodes and voice'}</span><button onclick={() => (showAll = !showAll)}>{showAll ? 'episodes' : 'all'}</button></div>
+      <div class="side-hdr"><span class="eyebrow">{showAll ? 'all events' : 'episodes, expressions, voice'}</span><button onclick={() => (showAll = !showAll)}>{showAll ? 'episodes' : 'all'}</button></div>
       <ul>
         {#each shown as e (e.event_id)}
-          <li class:audio={e.source === 'audio'} class:episode={e.event_type === 'episode'}><span class="mono">{tc(e.start_us).slice(3)}</span> <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span> <span class="mono sev">{sev(e.severity)}</span></li>
+          <li class:audio={e.source === 'audio'} class:episode={e.event_type === 'episode'} class:expr={e.event_type === 'expression_pattern'}><span class="mono">{tc(e.start_us).slice(3)}</span> <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span> <span class="mono sev">{sev(e.severity)}</span></li>
         {:else}
           <li class="muted">none yet. the first 30 s calibrate the baseline.</li>
         {/each}
@@ -327,6 +327,8 @@
   li .sev { margin-left: auto; color: var(--accent); }
   li .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   li.episode { border-left: 2px solid var(--accent); padding-left: 6px; }
+  li.expr { border-left: 2px solid var(--violet); padding-left: 6px; }
+  li.expr .sev { color: var(--violet); }
   .tag { font-style: normal; color: var(--muted); font-size: 10.5px; border: 1px solid var(--line-strong); padding: 0 4px; border-radius: 2px; }
   .side-hdr { display: flex; justify-content: space-between; align-items: center; }
   .side-hdr button { padding: 1px 8px; font-size: 11px; }

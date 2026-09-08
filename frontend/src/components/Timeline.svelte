@@ -91,7 +91,7 @@
       if (e.event_type === 'blink') { ctx.fillStyle = col.cool; ctx.globalAlpha = 0.55; ctx.fillRect(xOf(e.start_us), ey + EVENT_H - 5, Math.max(1, xOf(e.end_us) - xOf(e.start_us)), 3); ctx.globalAlpha = 1; continue }
       const x0 = xOf(e.start_us), x1 = Math.max(x0 + 2, xOf(e.end_us))
       const sel = selected?.event_id === e.event_id
-      ctx.fillStyle = e.source === 'audio' ? col.teal : col.accent
+      ctx.fillStyle = e.event_type === 'expression_pattern' ? cssVar('--violet') : e.source === 'audio' ? col.teal : col.accent
       ctx.globalAlpha = sel ? 1 : 0.7
       const h = e.level === 'interpretation' ? EVENT_H - 8 : EVENT_H - 14
       ctx.fillRect(x0, ey + (EVENT_H - h) / 2, x1 - x0, h)

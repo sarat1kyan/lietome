@@ -45,11 +45,12 @@ from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
 from lightman.features.smoothing import median_smooth
 from lightman.features.table import AU_COLUMNS, SIGNAL_COLUMNS, FeatureTableBuilder
+from lightman.interpretation.cues import cue_profile
 from lightman.live.streaming import tag_speaking
 from lightman.media import MediaLimits, iter_video_frames, probe_media, sha256_file
 from lightman.models import ModelRegistry
 from lightman.pipeline.audio_stage import AudioStageResult, run_audio_stage
-from lightman.report.narrative import build_narrative
+from lightman.report.narrative import build_narrative, cues_narrative
 from lightman.schema import (
     AnalysisManifest,
     Event,
@@ -516,6 +517,21 @@ def analyze_video(
         },
     }
 
+    ref_blinks = [b.start_us for b in blinks if b.event_type == "blink"]
+    ref_end = baseline.window_end_us + 60_000_000
+    ref_n = sum(1 for b in ref_blinks if baseline.window_end_us <= b < ref_end)
+    summary["session_cues"] = cue_profile(
+        window=(baseline.window_end_us, int(t_us[-1]) if n_frames else 0),
+        t_us=t_us,
+        signals=signals,
+        baseline_center={k: v.center for k, v in baseline.signals.items()},
+        baseline_scale={k: v.scale for k, v in baseline.signals.items()},
+        voice_f0_z=None,
+        blink_times_us=ref_blinks,
+        reference_blink_rate=ref_n or None,
+        response_latency_ms=None,
+        control_latency_ms=None,
+    )
     summary["narrative"] = build_narrative(
         duration_us=summary["duration_us"],
         quality=quality_summary.model_dump(mode="json"),
@@ -524,7 +540,7 @@ def analyze_video(
         events=events,
         audio=summary.get("audio"),
         mode="prerecorded",
-    )
+    ) + cues_narrative(summary["session_cues"])
 
     # ---- outputs
     t5 = time.perf_counter()

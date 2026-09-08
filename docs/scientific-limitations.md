@@ -98,6 +98,24 @@ cannot, from behavior alone); avoid deterministic output; document dataset, cult
 demographic limits; expose calibration, false-positive and false-negative rates. Until such a
 module exists with evidence, Lightman's ceiling is *behavioral deviation analysis*.
 
+## Expression patterns
+
+Events labelled "expression pattern: X (AU list)" mean the Action Units matched an EMFACS
+prototype for a while. They do not mean the person felt X. Spontaneous expressions rarely
+match prototypes; smiles occur in politeness and embarrassment; brow lowering accompanies
+concentration and bright light; contempt-like asymmetry appears in speech. "Brief" patterns
+(under 500 ms) are candidates for what the microexpression literature studies, at a frame rate
+(13-15 fps live) too low to confirm them.
+
+## Deception-research cues
+
+The cue profile lists literature cues (DePaulo et al. 2003; Sporer & Schwandt 2006; Leal &
+Vrij 2008) that moved in the direction reported for liars, next to the published effect size.
+Those effect sizes are small (mostly d < 0.3) and human accuracy with all cues combined is
+about 54% (Bond & DePaulo 2006). "3 of 5 cues present" is a description of measurements,
+not a probability of lying; stress, effort, humor and the question itself produce the same
+cues.
+
 ## Interview protocol
 
 The protocol mode (ADR-016) times questions and summarizes behavior per question and per

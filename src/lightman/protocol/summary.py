@@ -25,6 +25,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field
 
+from lightman.interpretation.cues import cue_profile
 from lightman.schema import Event
 
 Category = Literal["control", "relevant", "neutral"]
@@ -62,6 +63,8 @@ class QuestionSummary(BaseModel):
     blink_rate_per_min: float | None
     voice_pitch_delta_sd: float | None
     score: float = Field(description="deviations_per_min + max_severity; a descriptive score only")
+    expression_patterns: list[str] = Field(default_factory=list)
+    cues: dict[str, Any] | None = None
 
 
 class ProtocolSummary(BaseModel):
@@ -74,6 +77,7 @@ class ProtocolSummary(BaseModel):
     control_vs_relevant: dict[str, float | int | None]
     ground_truth: dict[str, Any]
     notes: list[str]
+    session_cues: dict[str, Any] | None = None
 
 
 def _speech_onsets(
@@ -122,7 +126,10 @@ def summarize_protocol(
     speaking: npt.NDArray[np.bool_] | None,
     session_end_us: int,
     voice_f0_z: tuple[npt.NDArray[np.integer], npt.NDArray[np.floating]] | None = None,
+    cue_inputs: dict[str, Any] | None = None,
 ) -> ProtocolSummary:
+    """``cue_inputs`` (optional): signals, baseline_center, baseline_scale, reference_blink_rate
+    for the literature cue profile."""
     qs = sorted((m for m in markers if m.kind == "question"), key=lambda m: m.t_us)
     ends = sorted(m.t_us for m in markers if m.kind == "end")
     onsets = _speech_onsets(t_us, speaking) if speaking is not None else []
@@ -170,6 +177,11 @@ def summarize_protocol(
                 pitch = float(np.mean(vz[m]))
         dpm = len(d) / window_min if window_min > 0 else 0.0
         mx_sev = max((e.severity for e in d), default=0.0)
+        expr = [
+            e.label.replace("expression pattern: ", "")
+            for e in events
+            if e.event_type == "expression_pattern" and e.start_us < end and e.end_us > q.t_us
+        ]
         out.append(
             QuestionSummary(
                 id=q.id or f"q{i + 1}",
@@ -189,8 +201,36 @@ def summarize_protocol(
                 blink_rate_per_min=round(blink_rate, 1) if blink_rate is not None else None,
                 voice_pitch_delta_sd=round(pitch, 2) if pitch is not None else None,
                 score=round(dpm + mx_sev, 2),
+                expression_patterns=expr[:8],
             )
         )
+    # cue profiles need the control latency mean: second pass
+    if cue_inputs is not None:
+        ctrl_lat = [
+            r.response_latency_ms
+            for r in out
+            if r.category == "control" and r.response_latency_ms is not None
+        ]
+        ctrl_mean = float(np.mean(ctrl_lat)) if ctrl_lat else None
+        out = [
+            r.model_copy(
+                update={
+                    "cues": cue_profile(
+                        window=(r.start_us, r.end_us),
+                        t_us=t_us,
+                        signals=cue_inputs["signals"],
+                        baseline_center=cue_inputs["baseline_center"],
+                        baseline_scale=cue_inputs["baseline_scale"],
+                        voice_f0_z=voice_f0_z,
+                        blink_times_us=blinks,
+                        reference_blink_rate=cue_inputs.get("reference_blink_rate"),
+                        response_latency_ms=r.response_latency_ms,
+                        control_latency_ms=ctrl_mean if r.category != "control" else None,
+                    )
+                }
+            )
+            for r in out
+        ]
     by_cat: dict[str, dict[str, float | int | None]] = {}
     for cat in ("control", "relevant", "neutral"):
         rows = [r for r in out if r.category == cat]
@@ -248,6 +288,21 @@ def summarize_protocol(
         notes.append("no questions were marked")
     if speaking is None:
         notes.append("no speech detection in this session: response latency not available")
+    session_cues = None
+    if cue_inputs is not None and t_us.size:
+        start = int(cue_inputs.get("session_start_us", 0))
+        session_cues = cue_profile(
+            window=(start, session_end_us),
+            t_us=t_us,
+            signals=cue_inputs["signals"],
+            baseline_center=cue_inputs["baseline_center"],
+            baseline_scale=cue_inputs["baseline_scale"],
+            voice_f0_z=voice_f0_z,
+            blink_times_us=blinks,
+            reference_blink_rate=cue_inputs.get("reference_blink_rate"),
+            response_latency_ms=None,
+            control_latency_ms=None,
+        )
     return ProtocolSummary(
         markers=markers,
         questions=out,
@@ -255,6 +310,7 @@ def summarize_protocol(
         control_vs_relevant=cvr,
         ground_truth=gt,
         notes=notes,
+        session_cues=session_cues,
     )
 
 

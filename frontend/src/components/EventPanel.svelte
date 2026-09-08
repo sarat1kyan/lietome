@@ -2,7 +2,7 @@
   import { api, tc } from '../lib/api'
   import type { Baseline, LmEvent, SessionSummary } from '../lib/types'
   let { selected, events, session, baseline, onpick }: { selected: LmEvent | null; events: LmEvent[]; session: SessionSummary | null; baseline: Baseline | null; onpick: (e: LmEvent) => void } = $props()
-  let filter = $state<'episodes' | 'all' | 'video' | 'audio' | 'speaking'>('episodes')
+  let filter = $state<'episodes' | 'expressions' | 'all' | 'video' | 'audio' | 'speaking'>('episodes')
   const hasEpisodes = $derived(events.some((e) => e.event_type === 'episode' || e.event_type === 'multi_signal_deviation'))
   const listed = $derived(
     events
@@ -10,6 +10,7 @@
       .filter((e) => {
         if (filter === 'episodes') return hasEpisodes ? e.event_type === 'episode' || e.event_type === 'multi_signal_deviation' : true
         if (filter === 'speaking') return e.tags.includes('speaking')
+        if (filter === 'expressions') return e.event_type === 'expression_pattern'
         if (filter === 'all') return true
         return e.source === filter
       })
@@ -59,7 +60,7 @@
       <span class="eyebrow">events <span class="mono">{listed.length}</span></span>
       <span class="muted mono">{blinks} blinks</span>
       <div class="filters">
-        {#each ['episodes', 'all', 'video', 'audio', 'speaking'] as f}
+        {#each ['episodes', 'expressions', 'all', 'video', 'audio', 'speaking'] as f}
           <button class:on={filter === f} onclick={() => (filter = f as typeof filter)}>{f}</button>
         {/each}
       </div>
@@ -67,7 +68,7 @@
     <ul>
       {#each listed as e (e.event_id)}
         <li>
-          <button class="ev" class:sel={selected?.event_id === e.event_id} class:audio={e.source === 'audio'} onclick={() => onpick(e)}>
+          <button class="ev" class:sel={selected?.event_id === e.event_id} class:audio={e.source === 'audio'} class:expr={e.event_type === 'expression_pattern'} onclick={() => onpick(e)}>
             <span class="sev mono">{sev(e.severity)}</span>
             <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span>
             <span class="t mono muted">{tc(e.start_us).slice(3)}</span>
@@ -117,6 +118,8 @@
   .ev.audio.sel { border-left-color: var(--teal); }
   .sev { color: var(--accent); }
   .ev.audio .sev { color: var(--teal); }
+  .ev.expr .sev { color: var(--violet); }
+  .ev.expr.sel { border-left-color: var(--violet); }
   .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .t { font-size: 11px; }
   .tag { font-style: normal; color: var(--muted); font-size: 10.5px; border: 1px solid var(--line-strong); padding: 0 4px; border-radius: 2px; margin-left: 6px; }
