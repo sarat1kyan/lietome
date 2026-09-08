@@ -3,6 +3,7 @@
   import { tc } from '../lib/api'
   import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg } from '../lib/live'
   import { CALIBRATION_SECONDS, PASSAGE, phaseAt } from '../lib/calibration'
+  import { DEFAULT_SCRIPT, parseScript, type ScriptQuestion } from '../lib/protocol'
   import type { LmEvent } from '../lib/types'
 
   let { ondone }: { ondone: (sessionId: string) => void } = $props()
@@ -32,6 +33,37 @@
   const WINDOW_US = 60e6
   const LANES = ['head.yaw_deg', 'head.speed_deg_s', 'gaze.horizontal', 'blendshape.browInnerUp', 'blendshape.jawOpen', 'asym.mouth_smile', 'au.AU4', 'au.AU12', 'voice.f0_hz', 'voice.energy_db']
   let laneBase = $state<Record<string, { center: number; scale: number }>>({})
+  let showProtocol = $state(false)
+  let script = $state(DEFAULT_SCRIPT)
+  const questions = $derived(parseScript(script))
+  let qIndex = $state(-1)
+  let asked = $state<{ q: ScriptQuestion; t_us: number; devs: number; latency_ms: number | null }[]>([])
+  let noteText = $state('')
+  let speakingAtAsk: boolean | null = null
+  const currentQ = $derived(qIndex >= 0 && qIndex < asked.length ? asked[qIndex] : null)
+  function askNext() {
+    if (!last || qIndex + 1 >= questions.length) return
+    const q = questions[qIndex + 1]
+    qIndex += 1
+    asked = [...asked, { q, t_us: last.t_us, devs: 0, latency_ms: null }]
+    speakingAtAsk = audioLast ? audioLast.speech_prob >= 0.5 : null
+    session?.mark({ kind_of: 'question', id: q.id, text: q.text, category: q.category, expected: q.expected, t_us: last.t_us })
+  }
+  function endAnswer() {
+    if (!last || !currentQ) return
+    session?.mark({ kind_of: 'end', t_us: last.t_us })
+  }
+  function addNote() {
+    if (!last || !noteText.trim()) return
+    session?.mark({ kind_of: 'note', text: noteText.trim(), t_us: last.t_us })
+    noteText = ''
+  }
+  function onWindowKey(ev: KeyboardEvent) {
+    const tag = (ev.target as HTMLElement)?.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+    if (ev.key === 'n' && state === 'running' && showProtocol) { askNext(); ev.preventDefault() }
+  }
+  $effect(() => { window.addEventListener('keydown', onWindowKey); return () => window.removeEventListener('keydown', onWindowKey) })
   // rolling raw values per lane; drawn as raw values scaled to a running min/max until the server
   // baseline is ready (we do not have the baseline numbers client-side; the lanes show shape, the
   // events carry the SD numbers)
@@ -61,9 +93,13 @@
       drawOverlay(m); drawLanes(m.t_us)
     } else if (m.type === 'audio') {
       audioLast = m
+      if (currentQ && currentQ.latency_ms == null && m.speech_prob >= 0.5 && m.t_us > currentQ.t_us + 150_000) {
+        asked[qIndex] = { ...asked[qIndex], latency_ms: (m.t_us - currentQ.t_us) / 1000 }
+      }
       push('voice.f0_hz', m.t_us, m.f0_hz); push('voice.energy_db', m.t_us, m.energy_db)
     } else if (m.type === 'events') {
       events = [...m.events.filter((e: LmEvent) => e.event_type !== 'blink'), ...events].slice(0, 300)
+      if (currentQ) { const n = m.events.filter((e: LmEvent) => e.event_type === 'baseline_deviation').length; if (n) asked[qIndex] = { ...asked[qIndex], devs: asked[qIndex].devs + n } }
     } else if (m.type === 'baseline') {
       baselineInfo = m
       if (m.signals) laneBase = m.signals
@@ -159,7 +195,7 @@
 
   async function start() {
     if (!videoEl) return
-    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null
+    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
       au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72,
@@ -185,6 +221,7 @@
     {:else}
       <button class="primary" onclick={start}>start</button>
     {/if}
+    <button onclick={() => (showProtocol = !showProtocol)}>{showProtocol ? 'hide protocol' : 'protocol'}</button>
     <span class="status mono" class:rec={state === 'running'}>{state}{detail ? ': ' + detail : ''}</span>
     {#if sessionId}<button onclick={() => ondone(sessionId!)}>open session {sessionId}</button>{/if}
   </div>
@@ -221,6 +258,35 @@
       {/if}
     </div>
     <div class="side">
+      {#if showProtocol}
+        <div class="proto">
+          <div class="eyebrow">interview protocol</div>
+          {#if state !== 'running'}
+            <textarea bind:value={script} rows="7" spellcheck="false"></textarea>
+            <div class="muted tiny">one question per line. C: control, R: relevant, N: neutral. add [truth] or [lie] at the end if you know the expected answer class.</div>
+          {:else}
+            {#if currentQ}
+              <div class="qcur">
+                <span class="eyebrow">{currentQ.q.category} {currentQ.q.id}</span>
+                <p>{currentQ.q.text}</p>
+                <div class="mono tiny">asked {tc(currentQ.t_us).slice(3)} {currentQ.latency_ms != null ? `. answer after ${currentQ.latency_ms.toFixed(0)} ms` : ''} . {currentQ.devs} deviations so far</div>
+              </div>
+            {:else}
+              <div class="muted">press ask (or n) when you read the first question aloud</div>
+            {/if}
+            <div class="proto-btns">
+              <button class="primary" onclick={askNext} disabled={!last || !last.baseline_ready || qIndex + 1 >= questions.length}>ask next ({Math.max(0, questions.length - qIndex - 1)} left)</button>
+              <button onclick={endAnswer} disabled={!currentQ}>end answer</button>
+            </div>
+            <div class="note-row"><input placeholder="note at current time" bind:value={noteText} onkeydown={(e) => e.key === 'Enter' && addNote()} /><button onclick={addNote}>add</button></div>
+            {#if asked.length}
+              <ol class="asked">
+                {#each asked as a (a.q.id)}<li class:rel={a.q.category === 'relevant'}><span class="mono">{tc(a.t_us).slice(3)}</span> {a.q.text.slice(0, 40)}{a.q.text.length > 40 ? '...' : ''} <span class="mono muted">{a.devs}</span></li>{/each}
+              </ol>
+            {/if}
+          {/if}
+        </div>
+      {/if}
       <div class="side-hdr"><span class="eyebrow">{showAll ? 'all events' : 'episodes and voice'}</span><button onclick={() => (showAll = !showAll)}>{showAll ? 'episodes' : 'all'}</button></div>
       <ul>
         {#each shown as e (e.event_id)}
@@ -265,5 +331,16 @@
   .side-hdr { display: flex; justify-content: space-between; align-items: center; }
   .side-hdr button { padding: 1px 8px; font-size: 11px; }
   li.audio .sev { color: var(--teal); }
+  .proto { border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 8px; }
+  .proto textarea { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 6px; font: 12px/1.4 var(--font-ui); resize: vertical; }
+  .tiny { font-size: 10.5px; }
+  .qcur { border-left: 2px solid var(--accent); padding: 4px 8px; margin: 6px 0; }
+  .qcur p { margin: 2px 0 4px; font-size: 14px; }
+  .proto-btns { display: flex; gap: 6px; margin: 6px 0; }
+  .note-row { display: flex; gap: 6px; }
+  .note-row input { flex: 1; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 3px 6px; font-size: 12px; }
+  .asked { margin: 8px 0 0; padding-left: 18px; font-size: 11.5px; }
+  .asked li { padding: 2px 0; }
+  .asked li.rel { color: var(--accent); }
   .lanes { width: 100%; display: block; border-top: 1px solid var(--line); background: var(--panel); }
 </style>

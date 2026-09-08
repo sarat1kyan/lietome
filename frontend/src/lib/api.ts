@@ -40,6 +40,10 @@ export const api = {
     const q = new URLSearchParams({ table, signals: signals.join(','), max_points: String(maxPoints) })
     return getJson(`./api/sessions/${id}/features?${q}`)
   },
+  async protocol(id: string): Promise<any> {
+    const d = demo()
+    return d ? { questions: [], markers: [] } : getJson(`./api/sessions/${id}/protocol`)
+  },
   thumbnail(id: string, eventId: string): string | null {
     const d = demo()
     if (d) return d.thumbnails?.[id]?.[eventId] ?? null

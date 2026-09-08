@@ -3,9 +3,10 @@
   import type { Baseline, FeatureSeries, LmEvent } from '../lib/types'
 
   let {
-    events, video, audio, baseline, audioBaseline, duration, selected, onpick, onseek,
+    events, video, audio, baseline, audioBaseline, duration, selected, onpick, onseek, protocol = null,
     playhead = $bindable(0),
   }: {
+    protocol?: any
     events: LmEvent[]; video: FeatureSeries | null; audio: FeatureSeries | null
     baseline: Baseline | null; audioBaseline: Baseline | null; duration: number
     selected: LmEvent | null; onpick: (e: LmEvent) => void; onseek: (us: number) => void; playhead: number
@@ -69,6 +70,13 @@
       ctx.fillText(tc(us).slice(3), x + 3, RULER_H / 2)
     }
 
+    // question spans (protocol)
+    for (const q of (protocol?.questions ?? []) as any[]) {
+      const x0 = xOf(q.start_us), x1 = Math.max(x0 + 2, xOf(q.end_us))
+      ctx.fillStyle = q.category === 'relevant' ? 'rgba(212,162,76,0.10)' : q.category === 'control' ? 'rgba(127,180,232,0.10)' : 'rgba(124,135,148,0.08)'
+      ctx.fillRect(x0, RULER_H, x1 - x0, height - RULER_H)
+      ctx.fillStyle = col.muted; ctx.fillText(q.id, x0 + 3, RULER_H + EVENT_H + 8)
+    }
     // baseline window shading
     if (baseline) {
       ctx.fillStyle = 'rgba(127,180,232,0.05)'
