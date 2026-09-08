@@ -39,6 +39,11 @@ class FrameSource(Protocol):
     @property
     def description(self) -> str: ...
 
+    @property
+    def lossless(self) -> bool:
+        """True when the producer may block instead of dropping frames (offline file replay)."""
+        ...
+
 
 class WebcamSource:
     def __init__(
@@ -67,6 +72,10 @@ class WebcamSource:
     def description(self) -> str:
         return self._desc
 
+    @property
+    def lossless(self) -> bool:
+        return False
+
     def read(self) -> LiveFrame | None:
         ok, bgr = self._cap.read()
         now = time.monotonic_ns()
@@ -83,7 +92,8 @@ class WebcamSource:
 
 class FileSource:
     """Replays a video file. ``realtime=True`` sleeps to match media time (drops nothing itself;
-    the consumer's queue does the dropping, as with a camera)."""
+    the consumer's queue does the dropping, as with a camera). ``realtime=False`` is lossless:
+    the runner blocks instead of dropping, so every frame is analyzed."""
 
     def __init__(self, path: Path, *, realtime: bool = True, max_frames: int | None = None) -> None:
         self._path = path
@@ -95,6 +105,10 @@ class FileSource:
     @property
     def description(self) -> str:
         return self._desc
+
+    @property
+    def lossless(self) -> bool:
+        return not self._realtime
 
     def read(self) -> LiveFrame | None:
         fr = next(self._iter, None)

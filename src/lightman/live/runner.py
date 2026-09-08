@@ -45,6 +45,9 @@ class _Capture(threading.Thread):
                 if fr is None:
                     break
                 self.stats.frames_captured += 1
+                if getattr(self.source, "lossless", False):
+                    self.q.put(fr)  # offline replay: every frame is analyzed, nothing dropped
+                    continue
                 while True:
                     try:
                         self.q.put_nowait(fr)
