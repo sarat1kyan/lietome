@@ -32,6 +32,17 @@ def _label_for(signal: str, direction: str) -> str:
         name = signal.split(".", 1)[1]
         desc = au_description(name)
         return f"{name} {desc} {direction}" if desc else f"{name} {direction}"
+    if signal == "head.speed_deg_s":
+        return f"head movement speed {direction}"
+    if signal == "gaze.horizontal":
+        side = "left" if direction == "increase" else "right"
+        return f"gaze shifted to the subject's {side}"
+    if signal == "gaze.vertical":
+        return "gaze shifted up" if direction == "increase" else "gaze shifted down"
+    if signal.startswith("asym."):
+        side = "left" if direction == "increase" else "right"
+        what = "brow lowering" if "brow" in signal else "smile"
+        return f"{what} asymmetry toward the {side}"
     if signal.startswith("head."):
         return f"head {signal.split('.', 1)[1].replace('_deg', '')} {direction}"
     if signal.startswith("eye."):

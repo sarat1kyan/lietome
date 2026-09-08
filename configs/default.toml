@@ -62,6 +62,7 @@ blink_max_ms = 500
 signals = [
   "head.yaw_deg", "head.pitch_deg", "head.roll_deg",
   "eye.aspect_ratio_mean",
+  "gaze.horizontal", "gaze.vertical", "head.speed_deg_s", "asym.brow_lower", "asym.mouth_smile",
   "blendshape.browDownLeft", "blendshape.browDownRight", "blendshape.browInnerUp",
   "blendshape.mouthPressLeft", "blendshape.mouthPressRight", "blendshape.jawOpen",
   "blendshape.eyeSquintLeft", "blendshape.eyeSquintRight",
