@@ -5,6 +5,12 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 ## [Unreleased]
 
 ### Added
+- Camera pulse estimate (rPPG, POS + SNR gate): skin.r/g/b columns, pulse.json, pulse_change
+  events, timeline lane, live HUD readout (ADR-019).
+- Head gesture events (nod, shake) offline and live.
+- Unfamiliar AU pairing events: pairs of watched AUs never co-active during calibration.
+- Key moments strip in the sessions view; live sessions save event thumbnails.
+- Event panel filters: gestures, pulse. Narrative lines for gestures, pairings and pulse.
 - Expression prototypes with exclusion AUs: social smile, brow flash, lip press, brow furrow;
   Duchenne vs lip-corner smile counts in the narrative (ADR-018).
 - Per-signal event rules: entry thresholds for gaze, head speed and articulation signals,

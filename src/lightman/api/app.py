@@ -117,6 +117,10 @@ def create_app(
         wanted = [s for s in signals.split(",") if s]
         return store.features(session_id, table=table, signals=wanted, max_points=max_points)
 
+    @app.get("/api/sessions/{session_id}/pulse")
+    def get_pulse(session_id: str) -> Any:
+        return store.read_json(session_id, "pulse.json") or {"t_us": [], "bpm": [], "snr_db": []}
+
     @app.get("/api/sessions/{session_id}/frame")
     def get_frame(session_id: str, t_us: Annotated[int, Query(ge=0)] = 0) -> dict[str, Any]:
         return store.frame(session_id, t_us)

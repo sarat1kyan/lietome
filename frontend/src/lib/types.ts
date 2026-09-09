@@ -83,3 +83,10 @@ export interface FrameSnapshot {
   baseline: Record<string, { center: number | null; scale: number | null }>
   state: 'speaking' | 'silent' | null
 }
+
+export interface PulseSeries {
+  t_us: number[]
+  bpm: number[]
+  snr_db: number[]
+  min_snr_db?: number
+}

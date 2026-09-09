@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { api } from './lib/api'
-  import type { FeatureSeries, LmEvent, SessionDetail, SessionSummary } from './lib/types'
+  import type { FeatureSeries, LmEvent, PulseSeries, SessionDetail, SessionSummary } from './lib/types'
   import SessionRail from './components/SessionRail.svelte'
   import VideoStage from './components/VideoStage.svelte'
   import Timeline from './components/Timeline.svelte'
@@ -11,6 +11,7 @@
   import SummaryCard from './components/SummaryCard.svelte'
   import ProtocolTable from './components/ProtocolTable.svelte'
   import FramePanel from './components/FramePanel.svelte'
+  import KeyMoments from './components/KeyMoments.svelte'
 
   let sessions = $state<SessionSummary[]>([])
   let current = $state<SessionSummary | null>(null)
@@ -18,6 +19,7 @@
   let events = $state<LmEvent[]>([])
   let video = $state<FeatureSeries | null>(null)
   let audio = $state<FeatureSeries | null>(null)
+  let pulse = $state<PulseSeries | null>(null)
   let protocol = $state<any>(null)
   let selected = $state<LmEvent | null>(null)
   let playhead = $state(0) // microseconds
@@ -36,6 +38,7 @@
       detail = d; events = ev; video = v
       protocol = await api.protocol(s.session_id)
       audio = s.has_audio ? await api.features(s.session_id, 'audio', AUDIO_SIGNALS) : null
+      pulse = await api.pulse(s.session_id).catch(() => null)
       playhead = 0
     } catch (e) {
       error = String(e)
@@ -108,8 +111,9 @@
     {#if current && detail}
       <VideoStage session={current} {events} {selected} bind:playhead />
       <FramePanel sessionId={current.session_id} {playhead} />
-      <Timeline {events} {video} {audio} {protocol} baseline={detail.baseline} audioBaseline={detail.audio_baseline}
+      <Timeline {events} {video} {audio} {pulse} {protocol} baseline={detail.baseline} audioBaseline={detail.audio_baseline}
                 duration={current.duration_us ?? 0} bind:playhead {selected} onpick={pick} onseek={seekTo} />
+      <KeyMoments {events} session={current} onpick={pick} />
       <ProtocolTable {protocol} onseek={seekTo} />
       <SummaryCard {detail} {events} />
       <QualityStrip {detail} {events} />
@@ -145,7 +149,7 @@
   .top-right { display: flex; gap: 12px; align-items: center; font-size: 12px; }
   .keys { font-size: 10.5px; color: var(--faint); }
   .chip { border: 1px solid var(--accent); color: var(--accent); padding: 1px 7px; border-radius: 10px; font-size: 11px; }
-  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
+  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
   .empty { padding: 48px; color: var(--muted); }
   .error { margin: 12px; padding: 10px 12px; border: 1px solid var(--warn); color: var(--warn); border-radius: var(--radius); }
   code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; }

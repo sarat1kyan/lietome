@@ -99,6 +99,10 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   exclusion AUs (social smile, brow flash, lip press, brow furrow), per-signal thresholds and
   minimum durations, live voice table + pitch cue, frame readout and live overlays. Replay
   404 -> 268 deviations (167 -> 111/min).
+* ADR-019: camera pulse estimate (rPPG POS, SNR-gated, pulse lane + HUD), head nods/shakes
+  (session 5: 5 nods), unfamiliar AU pairings (whole-set version gave 30 noisy events; pairs
+  over 13 watched AUs instead), key-moments strip with live thumbnails. Not yet validated
+  against a contact pulse sensor: see Next work.
 
 ## Known limitations / issues
 
@@ -138,6 +142,9 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
 See docs/benchmarks.md. M5 Pro CPU: 3.4-3.8 ms/frame landmarker; 20 s clip end-to-end 3.45 s.
 
 ## Next work (proposed order)
+
+* Validate the rPPG estimate against a pulse oximeter or a smartwatch on 3+ subjects and
+  light conditions; record agreement and the SNR gate's precision.
 
 1. Validate on real single-person footage (user-provided or CC-licensed interview): check head
    pose signs, blink detection precision, event plausibility; tune floors/thresholds; record.

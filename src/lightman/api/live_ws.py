@@ -214,6 +214,15 @@ async def live_endpoint(
                                 "values": shown,
                                 "landmarks": lm,
                                 "baseline_ready": res.baseline_ready,
+                                "pulse": (
+                                    {
+                                        "bpm": round(res.pulse.bpm, 1),
+                                        "snr_db": round(res.pulse.snr_db, 1),
+                                        "usable": res.pulse.snr_db >= cfg.pulse.min_snr_db,
+                                    }
+                                    if res.pulse is not None
+                                    else None
+                                ),
                                 "stats": analyzer.stats.summary(),
                             }
                         )

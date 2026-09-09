@@ -80,6 +80,27 @@ signals = [
 "au.AU25" = 6.0
 "au.AU26" = 6.0
 
+[events.min_duration_by_prefix]  # brief excursions are ordinary for these
+"gaze." = 400
+"head.speed_deg_s" = 250
+
+[pulse]                      # camera pulse estimate (rPPG, POS): an estimate, gated by SNR
+enabled = true
+window_s = 10.0
+min_snr_db = 3.0
+min_change_bpm = 10.0
+min_sustain_s = 5.0
+
+[gestures]                   # head nods (pitch) and shakes (yaw)
+enabled = true
+nod_min_deg = 3.0
+shake_min_deg = 4.0
+
+[novelty]                    # AU combinations never seen together during calibration
+enabled = true
+threshold = 0.5
+min_ms = 300
+
 [storage]
 store_landmarks = false      # 478x3 per frame is large and biometric; off by default
 write_report = true

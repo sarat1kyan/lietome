@@ -1,12 +1,13 @@
 <script lang="ts">
   import { tc } from '../lib/api'
-  import type { Baseline, FeatureSeries, LmEvent } from '../lib/types'
+  import type { Baseline, FeatureSeries, LmEvent, PulseSeries } from '../lib/types'
 
   let {
-    events, video, audio, baseline, audioBaseline, duration, selected, onpick, onseek, protocol = null,
+    events, video, audio, baseline, audioBaseline, duration, selected, onpick, onseek, protocol = null, pulse = null,
     playhead = $bindable(0),
   }: {
     protocol?: any
+    pulse?: PulseSeries | null
     events: LmEvent[]; video: FeatureSeries | null; audio: FeatureSeries | null
     baseline: Baseline | null; audioBaseline: Baseline | null; duration: number
     selected: LmEvent | null; onpick: (e: LmEvent) => void; onseek: (us: number) => void; playhead: number
@@ -40,8 +41,9 @@
     return out
   })
 
+  const hasPulse = $derived(Boolean(pulse && pulse.t_us.length > 2))
   const total = $derived(Math.max(duration, ...lanes.map((l) => l.t[l.t.length - 1] ?? 0), 1))
-  const height = $derived(RULER_H + EVENT_H + lanes.length * LANE_H + 8)
+  const height = $derived(RULER_H + EVENT_H + (lanes.length + (hasPulse ? 1 : 0)) * LANE_H + 8)
   const xOf = (us: number) => LABEL_W + ((width - LABEL_W - 12) * us) / total
   const usOf = (x: number) => Math.max(0, Math.min(total, ((x - LABEL_W) / (width - LABEL_W - 12)) * total))
 
@@ -91,7 +93,7 @@
       if (e.event_type === 'blink') { ctx.fillStyle = col.cool; ctx.globalAlpha = 0.55; ctx.fillRect(xOf(e.start_us), ey + EVENT_H - 5, Math.max(1, xOf(e.end_us) - xOf(e.start_us)), 3); ctx.globalAlpha = 1; continue }
       const x0 = xOf(e.start_us), x1 = Math.max(x0 + 2, xOf(e.end_us))
       const sel = selected?.event_id === e.event_id
-      ctx.fillStyle = e.event_type === 'expression_pattern' ? cssVar('--violet') : e.source === 'audio' ? col.teal : col.accent
+      ctx.fillStyle = e.event_type === 'expression_pattern' || e.event_type === 'au_novelty' ? cssVar('--violet') : e.event_type === 'pulse_change' ? cssVar('--pulse') : e.event_type === 'head_gesture' ? col.cool : e.source === 'audio' ? col.teal : col.accent
       ctx.globalAlpha = sel ? 1 : 0.7
       const h = e.level === 'interpretation' ? EVENT_H - 8 : EVENT_H - 14
       ctx.fillRect(x0, ey + (EVENT_H - h) / 2, x1 - x0, h)
@@ -134,6 +136,32 @@
       }
       ctx.stroke(); ctx.lineWidth = 1
     })
+
+    // pulse lane: absolute bpm, faded where the SNR gate rejects the estimate
+    if (hasPulse && pulse) {
+      const y0 = RULER_H + EVENT_H + lanes.length * LANE_H
+      const lo = 45, hi = 135
+      const yOf = (bpm: number) => y0 + LANE_H - 5 - ((Math.max(lo, Math.min(hi, bpm)) - lo) / (hi - lo)) * (LANE_H - 10)
+      ctx.strokeStyle = col.line; ctx.beginPath(); ctx.moveTo(LABEL_W, y0 + LANE_H); ctx.lineTo(width, y0 + LANE_H); ctx.stroke()
+      ctx.fillStyle = col.text; ctx.textAlign = 'left'; ctx.fillText('pulse.bpm', 8, y0 + 14)
+      ctx.fillStyle = col.muted; ctx.fillText('camera estimate, 45-135', 8, y0 + 30)
+      ctx.strokeStyle = col.faint; ctx.setLineDash([2, 4])
+      for (const g of [60, 90, 120]) { const y = yOf(g); ctx.beginPath(); ctx.moveTo(LABEL_W, y); ctx.lineTo(width - 12, y); ctx.stroke(); ctx.fillText(String(g), width - 30, y) }
+      ctx.setLineDash([])
+      for (const e of events) {
+        if (e.event_type !== 'pulse_change') continue
+        ctx.fillStyle = cssVar('--pulse'); ctx.globalAlpha = 0.14
+        ctx.fillRect(xOf(e.start_us), y0 + 2, Math.max(2, xOf(e.end_us) - xOf(e.start_us)), LANE_H - 4); ctx.globalAlpha = 1
+      }
+      const gate = pulse.min_snr_db ?? 3
+      const pc = cssVar('--pulse')
+      for (let k = 1; k < pulse.t_us.length; k++) {
+        const ok = pulse.snr_db[k] >= gate && pulse.snr_db[k - 1] >= gate
+        ctx.strokeStyle = pc; ctx.globalAlpha = ok ? 1 : 0.22; ctx.lineWidth = ok ? 1.3 : 1
+        ctx.beginPath(); ctx.moveTo(xOf(pulse.t_us[k - 1]), yOf(pulse.bpm[k - 1])); ctx.lineTo(xOf(pulse.t_us[k]), yOf(pulse.bpm[k])); ctx.stroke()
+      }
+      ctx.globalAlpha = 1; ctx.lineWidth = 1
+    }
 
     // playhead + hover
     const px = xOf(playhead)
