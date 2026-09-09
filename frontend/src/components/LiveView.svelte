@@ -37,6 +37,8 @@
   let flashes: { text: string; until: number; color: string }[] = []
   const FLASH_TYPES = new Set(['episode', 'expression_pattern', 'blink_rate_change', 'head_gesture', 'au_novelty', 'pulse_change'])
   let pulseHold = $state<{ bpm: number; snr_db: number; usable: boolean } | null>(null)
+  let tally = $state<Record<string, number>>({})
+  const TALLY = [['episode', 'episodes'], ['expression_pattern', 'patterns'], ['head_gesture', 'gestures'], ['au_novelty', 'pairings'], ['voice', 'voice'], ['pulse_change', 'pulse'], ['blink', 'blinks']] as const
   let lastBlinkAt = 0
   let showOverlay = $state(true)
   let showProtocol = $state(false)
@@ -107,6 +109,8 @@
       events = [...m.events.filter((e: LmEvent) => e.event_type !== 'blink'), ...events].slice(0, 300)
       const now = performance.now()
       for (const e of m.events as LmEvent[]) {
+        const tk = e.source === 'audio' ? 'voice' : e.event_type
+        tally[tk] = (tally[tk] ?? 0) + 1
         if (e.event_type === 'blink') { lastBlinkAt = now; continue }
         if (FLASH_TYPES.has(e.event_type) || e.source === 'audio')
           flashes = [{ text: e.label.replace('expression pattern: ', '').replace('new AU pairing: ', 'new: '), until: now + 2500, color: e.event_type === 'expression_pattern' || e.event_type === 'au_novelty' ? '#b48ce6' : e.event_type === 'head_gesture' ? '#7fb4e8' : e.event_type === 'pulse_change' ? '#e0907a' : e.source === 'audio' ? '#5fb8ae' : '#d4a24c' }, ...flashes].slice(0, 4)
@@ -282,7 +286,7 @@
 
   async function start() {
     if (!videoEl) return
-    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []
+    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
       au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72,
@@ -376,7 +380,10 @@
           {/if}
         </div>
       {/if}
-      <div class="side-hdr"><span class="eyebrow">{showAll ? 'all events' : 'episodes, expressions, voice'}</span><button onclick={() => (showAll = !showAll)}>{showAll ? 'episodes' : 'all'}</button></div>
+      <div class="tally">
+        {#each TALLY as [k, label] (k)}<span class:zero={!tally[k]}><b class="mono">{tally[k] ?? 0}</b> {label}</span>{/each}
+      </div>
+      <div class="side-hdr"><span class="eyebrow">{showAll ? 'all events' : 'episodes, patterns, gestures, voice'}</span><button onclick={() => (showAll = !showAll)}>{showAll ? 'episodes' : 'all'}</button></div>
       <ul>
         {#each shown as e (e.event_id)}
           <li class:audio={e.source === 'audio'} class:episode={e.event_type === 'episode'} class:expr={e.event_type === 'expression_pattern'}><span class="mono">{tc(e.start_us).slice(3)}</span> <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span> <span class="mono sev">{sev(e.severity)}</span></li>
@@ -436,4 +443,7 @@
   .lanes { width: 100%; display: block; border-top: 1px solid var(--line); background: var(--panel); }
   .readout .pulse { color: var(--pulse); }
   .readout .pulse.dim { color: var(--muted); }
+  .tally { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .tally b { color: var(--text); font-weight: 500; }
+  .tally .zero { opacity: 0.55; }
 </style>
