@@ -11,6 +11,7 @@ export interface LiveFrameMsg {
   values: Record<string, number>
   landmarks: number[] | null // flat x,y normalized, 478 points
   baseline_ready: boolean
+  pulse: { bpm: number; snr_db: number; usable: boolean } | null
   stats: { analyzed_fps: number; latency_ms_p50: number | null; frames_dropped: number; frames_analyzed: number }
 }
 export interface LiveEventsMsg { type: 'events'; events: any[] }

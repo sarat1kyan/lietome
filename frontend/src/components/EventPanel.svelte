@@ -1,8 +1,11 @@
 <script lang="ts">
   import { api, tc } from '../lib/api'
   import type { Baseline, LmEvent, SessionSummary } from '../lib/types'
+  import { explain } from '../lib/explain'
   let { selected, events, session, baseline, onpick }: { selected: LmEvent | null; events: LmEvent[]; session: SessionSummary | null; baseline: Baseline | null; onpick: (e: LmEvent) => void } = $props()
-  let filter = $state<'episodes' | 'expressions' | 'all' | 'video' | 'audio' | 'speaking'>('episodes')
+  let filter = $state<'episodes' | 'expressions' | 'gestures' | 'pulse' | 'all' | 'video' | 'audio' | 'speaking'>('episodes')
+  const GESTURE_TYPES = ['head_gesture', 'eye_closure', 'blink_rate_change']
+  const PULSE_TYPES = ['pulse_change', 'au_novelty']
   const hasEpisodes = $derived(events.some((e) => e.event_type === 'episode' || e.event_type === 'multi_signal_deviation'))
   const listed = $derived(
     events
@@ -11,6 +14,8 @@
         if (filter === 'episodes') return hasEpisodes ? e.event_type === 'episode' || e.event_type === 'multi_signal_deviation' : true
         if (filter === 'speaking') return e.tags.includes('speaking')
         if (filter === 'expressions') return e.event_type === 'expression_pattern'
+        if (filter === 'gestures') return GESTURE_TYPES.includes(e.event_type)
+        if (filter === 'pulse') return PULSE_TYPES.includes(e.event_type)
         if (filter === 'all') return true
         return e.source === filter
       })
@@ -20,6 +25,7 @@
   const blinks = $derived(events.filter((e) => e.event_type === 'blink').length)
   const thumb = $derived(selected && session ? api.thumbnail(session.session_id, selected.event_id) : null)
   const f3 = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(3))
+  const why = $derived(selected ? explain(selected) : null)
 </script>
 
 <aside class="panel">
@@ -31,6 +37,13 @@
       {#if selected.tags.includes('speaking')}<div class="speak">subject was speaking: mouth signals reflect articulation, confidence halved</div>{/if}
       {#if thumb}<img class="thumb" src={thumb} alt="" onerror={(e) => ((e.currentTarget as HTMLImageElement).style.display = 'none')} />{/if}
       <p class="desc">{selected.description}</p>
+      {#if why}
+        <dl class="why">
+          <dt>measured</dt><dd>{why.measured}</dd>
+          <dt>not</dt><dd>{why.not}</dd>
+          <dt>check</dt><dd>{why.check}</dd>
+        </dl>
+      {/if}
       <div class="eyebrow">contributors</div>
       <table class="mono">
         <tbody>
@@ -60,7 +73,7 @@
       <span class="eyebrow">events <span class="mono">{listed.length}</span></span>
       <span class="muted mono">{blinks} blinks</span>
       <div class="filters">
-        {#each ['episodes', 'expressions', 'all', 'video', 'audio', 'speaking'] as f}
+        {#each ['episodes', 'expressions', 'gestures', 'pulse', 'all', 'video', 'audio', 'speaking'] as f}
           <button class:on={filter === f} onclick={() => (filter = f as typeof filter)}>{f}</button>
         {/each}
       </div>
@@ -68,7 +81,7 @@
     <ul>
       {#each listed as e (e.event_id)}
         <li>
-          <button class="ev" class:sel={selected?.event_id === e.event_id} class:audio={e.source === 'audio'} class:expr={e.event_type === 'expression_pattern'} onclick={() => onpick(e)}>
+          <button class="ev" class:sel={selected?.event_id === e.event_id} class:audio={e.source === 'audio'} class:expr={e.event_type === 'expression_pattern' || e.event_type === 'au_novelty'} class:pulse={e.event_type === 'pulse_change'} class:gesture={e.event_type === 'head_gesture'} onclick={() => onpick(e)}>
             <span class="sev mono">{sev(e.severity)}</span>
             <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span>
             <span class="t mono muted">{tc(e.start_us).slice(3)}</span>
@@ -124,4 +137,9 @@
   .t { font-size: 11px; }
   .tag { font-style: normal; color: var(--muted); font-size: 10.5px; border: 1px solid var(--line-strong); padding: 0 4px; border-radius: 2px; margin-left: 6px; }
   .speak { font-size: 11.5px; color: var(--teal); margin: 6px 0; }
+  .ev.pulse .sev { color: var(--pulse); }
+  .ev.gesture .sev { color: var(--cool); }
+  .why { display: grid; grid-template-columns: 62px 1fr; gap: 4px 10px; margin: 8px 0 10px; font-size: 11.5px; line-height: 1.45; }
+  .why dt { color: var(--muted); font: 500 10px/1.6 var(--font-data); letter-spacing: 0.06em; text-transform: uppercase; }
+  .why dd { margin: 0; color: var(--text); }
 </style>

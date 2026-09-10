@@ -58,6 +58,9 @@ META_COLUMNS: tuple[str, ...] = (
     "speaking",
     "quality.blur",
     "quality.luma",
+    "skin.r",
+    "skin.g",
+    "skin.b",
 )
 SIGNAL_COLUMNS: tuple[str, ...] = (
     HEAD_COLUMNS + EYE_COLUMNS + DERIVED_COLUMNS + BLENDSHAPE_COLUMNS + AU_COLUMNS
@@ -115,6 +118,7 @@ class FeatureTableBuilder:
         derived: Sequence[float] | None = None,
         blur: float = math.nan,
         luma: float = math.nan,
+        skin: Sequence[float] | None = None,
     ) -> None:
         c = self._cols
         c["frame_index"].append(frame_index)
@@ -133,6 +137,10 @@ class FeatureTableBuilder:
         c["speaking"].append(speaking)
         c["quality.blur"].append(blur)
         c["quality.luma"].append(luma)
+        sr, sg, sb = skin if skin is not None else (math.nan, math.nan, math.nan)
+        c["skin.r"].append(sr)
+        c["skin.g"].append(sg)
+        c["skin.b"].append(sb)
         dv = list(derived) if derived is not None else [math.nan] * len(DERIVED_COLUMNS)
         for name, v in zip(DERIVED_COLUMNS, dv, strict=True):
             c[name].append(v)

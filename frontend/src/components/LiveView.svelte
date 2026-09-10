@@ -28,13 +28,17 @@
   let calib = $state<{ name: string; instruction: string; remaining: number; speaking: boolean } | null>(null)
   let baselineInfo = $state<LiveBaselineMsg | null>(null)
   let lastPhaseSpeaking: boolean | null = null
-  const shown = $derived(showAll ? events : events.filter((e) => e.event_type === 'episode' || e.event_type === 'expression_pattern' || e.event_type === 'blink_rate_change' || e.source === 'audio'))
+  const shown = $derived(showAll ? events : events.filter((e) => FLASH_TYPES.has(e.event_type) || e.source === 'audio'))
   const sev = (v: number) => (v > 20 ? '>20' : v.toFixed(1))
 
   const WINDOW_US = 60e6
   const LANES = ['head.yaw_deg', 'head.speed_deg_s', 'gaze.horizontal', 'blendshape.browInnerUp', 'blendshape.jawOpen', 'asym.mouth_smile', 'au.AU4', 'au.AU12', 'voice.f0_hz', 'voice.energy_db']
   let laneBase = $state<Record<string, { center: number; scale: number }>>({})
   let flashes: { text: string; until: number; color: string }[] = []
+  const FLASH_TYPES = new Set(['episode', 'expression_pattern', 'blink_rate_change', 'head_gesture', 'au_novelty', 'pulse_change'])
+  let pulseHold = $state<{ bpm: number; snr_db: number; usable: boolean } | null>(null)
+  let tally = $state<Record<string, number>>({})
+  const TALLY = [['episode', 'episodes'], ['expression_pattern', 'patterns'], ['head_gesture', 'gestures'], ['au_novelty', 'pairings'], ['voice', 'voice'], ['pulse_change', 'pulse'], ['blink', 'blinks']] as const
   let lastBlinkAt = 0
   let showOverlay = $state(true)
   let showProtocol = $state(false)
@@ -85,7 +89,7 @@
 
   function onmessage(m: LiveMsg) {
     if (m.type === 'frame') {
-      last = m
+      last = m; if (m.pulse) pulseHold = m.pulse
       if (!m.baseline_ready) {
         const ph = phaseAt(m.t_us / 1e6)
         calib = ph ? { name: ph.phase.name, instruction: ph.phase.instruction, remaining: ph.remaining, speaking: ph.phase.speaking } : { name: 'finishing', instruction: 'Hold on, computing the baseline.', remaining: 0, speaking: false }
@@ -105,9 +109,11 @@
       events = [...m.events.filter((e: LmEvent) => e.event_type !== 'blink'), ...events].slice(0, 300)
       const now = performance.now()
       for (const e of m.events as LmEvent[]) {
+        const tk = e.source === 'audio' ? 'voice' : e.event_type
+        tally[tk] = (tally[tk] ?? 0) + 1
         if (e.event_type === 'blink') { lastBlinkAt = now; continue }
-        if (e.event_type === 'episode' || e.event_type === 'expression_pattern' || e.event_type === 'blink_rate_change' || e.source === 'audio')
-          flashes = [{ text: e.label.replace('expression pattern: ', ''), until: now + 2500, color: e.event_type === 'expression_pattern' ? '#b48ce6' : e.source === 'audio' ? '#5fb8ae' : '#d4a24c' }, ...flashes].slice(0, 4)
+        if (FLASH_TYPES.has(e.event_type) || e.source === 'audio')
+          flashes = [{ text: e.label.replace('expression pattern: ', '').replace('new AU pairing: ', 'new: '), until: now + 2500, color: e.event_type === 'expression_pattern' || e.event_type === 'au_novelty' ? '#b48ce6' : e.event_type === 'head_gesture' ? '#7fb4e8' : e.event_type === 'pulse_change' ? '#e0907a' : e.source === 'audio' ? '#5fb8ae' : '#d4a24c' }, ...flashes].slice(0, 4)
       }
       if (currentQ) { const n = m.events.filter((e: LmEvent) => e.event_type === 'baseline_deviation').length; if (n) asked[qIndex] = { ...asked[qIndex], devs: asked[qIndex].devs + n } }
     } else if (m.type === 'baseline') {
@@ -280,7 +286,7 @@
 
   async function start() {
     if (!videoEl) return
-    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []
+    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
       au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72,
@@ -339,6 +345,7 @@
           {#if last.values['head.yaw_deg'] != null}<div>yaw {last.values['head.yaw_deg'].toFixed(0)} pitch {last.values['head.pitch_deg'].toFixed(0)} roll {last.values['head.roll_deg'].toFixed(0)}</div>{/if}
           {#if readoutGaze}<div>{readoutGaze}{last?.values['head.speed_deg_s'] != null ? `, head ${last.values['head.speed_deg_s'].toFixed(0)} deg/s` : ''}</div>{/if}
           {#if audioLast}<div>speech {audioLast.speech_prob.toFixed(2)} f0 {audioLast.f0_hz ? audioLast.f0_hz.toFixed(0) + ' Hz' : '-'} {audioLast.energy_db.toFixed(0)} dB</div>{/if}
+          {#if pulseHold}<div class="pulse" class:dim={!pulseHold.usable}>pulse ~{pulseHold.bpm.toFixed(0)} bpm <span class="muted">camera estimate, {pulseHold.usable ? 'snr ' + pulseHold.snr_db.toFixed(0) + ' dB' : 'not usable: hold still, face the light'}</span></div>{/if}
           <div class="muted">{last.stats.analyzed_fps.toFixed(1)} fps, latency {last.stats.latency_ms_p50?.toFixed(0) ?? '-'} ms, dropped {last.stats.frames_dropped}</div>
         </div>
       {/if}
@@ -373,7 +380,10 @@
           {/if}
         </div>
       {/if}
-      <div class="side-hdr"><span class="eyebrow">{showAll ? 'all events' : 'episodes, expressions, voice'}</span><button onclick={() => (showAll = !showAll)}>{showAll ? 'episodes' : 'all'}</button></div>
+      <div class="tally">
+        {#each TALLY as [k, label] (k)}<span class:zero={!tally[k]}><b class="mono">{tally[k] ?? 0}</b> {label}</span>{/each}
+      </div>
+      <div class="side-hdr"><span class="eyebrow">{showAll ? 'all events' : 'episodes, patterns, gestures, voice'}</span><button onclick={() => (showAll = !showAll)}>{showAll ? 'episodes' : 'all'}</button></div>
       <ul>
         {#each shown as e (e.event_id)}
           <li class:audio={e.source === 'audio'} class:episode={e.event_type === 'episode'} class:expr={e.event_type === 'expression_pattern'}><span class="mono">{tc(e.start_us).slice(3)}</span> <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span> <span class="mono sev">{sev(e.severity)}</span></li>
@@ -431,4 +441,9 @@
   .asked li { padding: 2px 0; }
   .asked li.rel { color: var(--accent); }
   .lanes { width: 100%; display: block; border-top: 1px solid var(--line); background: var(--panel); }
+  .readout .pulse { color: var(--pulse); }
+  .readout .pulse.dim { color: var(--muted); }
+  .tally { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .tally b { color: var(--text); font-weight: 500; }
+  .tally .zero { opacity: 0.55; }
 </style>

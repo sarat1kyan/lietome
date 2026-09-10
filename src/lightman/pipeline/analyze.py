@@ -31,6 +31,7 @@ from lightman.core.errors import LightmanError, UnsupportedMediaError
 from lightman.core.logging import get_logger
 from lightman.core.timebase import utc_now_iso
 from lightman.events import cluster_cooccurring, detect_blinks, detect_deviation_events
+from lightman.events.gestures import detect_head_gestures
 from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
 from lightman.features.derived import (
@@ -43,9 +44,11 @@ from lightman.features.derived import (
 from lightman.features.eyes import eye_aspect_ratios
 from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
+from lightman.features.rppg import estimate_pulse, pulse_events, skin_means
 from lightman.features.smoothing import median_smooth
 from lightman.features.table import AU_COLUMNS, SIGNAL_COLUMNS, FeatureTableBuilder
 from lightman.interpretation.cues import cue_profile
+from lightman.interpretation.novelty import detect_au_novelty
 from lightman.live.streaming import tag_speaking
 from lightman.media import MediaLimits, iter_video_frames, probe_media, sha256_file
 from lightman.models import ModelRegistry
@@ -282,6 +285,7 @@ def analyze_video(
                 prev_head, prev_t_us = cur_head, fr.t_us
                 bbox_px = (bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
                 blur, luma = frame_quality_terms(fr.rgb, bbox_px)
+                skin = skin_means(fr.rgb, face.landmarks, w, h) if cfg.pulse.enabled else None
                 aus = None
                 if (
                     au_detector is not None
@@ -310,6 +314,7 @@ def analyze_video(
                     derived=(gz_h, gz_v, as_b, as_s, speed),
                     blur=blur,
                     luma=luma,
+                    skin=skin,
                 )
             else:
                 builder.add_frame(
@@ -420,8 +425,57 @@ def analyze_video(
         id_start=len(blinks) + len(deviations),
     )
     warmup_us = cfg.events.warmup_ms * 1000
+    extra: list[Event] = []
+    if cfg.gestures.enabled:
+        extra += detect_head_gestures(
+            t_us=t_us,
+            quality=quality,
+            yaw_deg=signals["head.yaw_deg"],
+            pitch_deg=signals["head.pitch_deg"],
+            subject_id=subject_id,
+            extractor_id=prov.extractor_id,
+            baseline_quality=baseline.quality,
+            id_start=700_000,
+            nod_min_deg=cfg.gestures.nod_min_deg,
+            shake_min_deg=cfg.gestures.shake_min_deg,
+        )
+    if cfg.novelty.enabled and au_detector is not None:
+        extra += detect_au_novelty(
+            t_us=t_us,
+            quality=quality,
+            signals=signals,
+            calibration_end_us=baseline.window_end_us,
+            subject_id=subject_id,
+            extractor_id=prov.extractor_id,
+            baseline_quality=baseline.quality,
+            id_start=750_000,
+            threshold=cfg.novelty.threshold,
+            min_ms=cfg.novelty.min_ms,
+        )
+    pulse_summary: dict[str, Any] | None = None
+    pulse_series: list[Any] = []
+    if cfg.pulse.enabled:
+        pulse_series = estimate_pulse(
+            t_us,
+            cols["skin.r"].astype(np.float64),
+            cols["skin.g"].astype(np.float64),
+            cols["skin.b"].astype(np.float64),
+            quality,
+            window_s=cfg.pulse.window_s,
+        )
+        pev, pulse_summary = pulse_events(
+            pulse_series,
+            subject_id=subject_id,
+            extractor_id="rppg-pos",
+            baseline_quality=baseline.quality,
+            id_start=800_000,
+            min_snr_db=cfg.pulse.min_snr_db,
+            min_change_bpm=cfg.pulse.min_change_bpm,
+            min_sustain_s=cfg.pulse.min_sustain_s,
+        )
+        extra += pev
     events = sorted(
-        (e for e in blinks + deviations + clusters if e.start_us >= warmup_us),
+        (e for e in blinks + deviations + clusters + extra if e.start_us >= warmup_us),
         key=lambda e: (e.start_us, e.event_id),
     )
     if audio is not None:
@@ -495,6 +549,7 @@ def analyze_video(
             k: sum(1 for e in events if e.event_type == k)
             for k in sorted({e.event_type for e in events})
         },
+        "pulse": pulse_summary,
         "inference_ms_per_frame": {
             "mean": float(np.mean(infer_ms)) if infer_ms else None,
             "p50": float(np.percentile(infer_ms, 50)) if infer_ms else None,
@@ -540,6 +595,7 @@ def analyze_video(
         events=events,
         audio=summary.get("audio"),
         mode="prerecorded",
+        pulse=pulse_summary,
     ) + cues_narrative(summary["session_cues"])
 
     # ---- outputs
@@ -611,6 +667,18 @@ def analyze_video(
             thumbs[e.event_id] = dest
     timing["outputs_ms"] = (time.perf_counter() - t5) * 1000
 
+    if pulse_series:
+        pulse_path = session_dir / "pulse.json"
+        _write_json(
+            pulse_path,
+            {
+                "t_us": [e.t_us for e in pulse_series],
+                "bpm": [round(e.bpm, 1) for e in pulse_series],
+                "snr_db": [round(e.snr_db, 2) for e in pulse_series],
+                "min_snr_db": cfg.pulse.min_snr_db,
+            },
+        )
+        outputs.append(_artifact(pulse_path, "json"))
     analysis_path = session_dir / "analysis.json"
     summary["timing_ms"] = timing
     _write_json(analysis_path, _nan_to_none(summary))

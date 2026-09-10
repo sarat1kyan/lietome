@@ -26,6 +26,7 @@ from lightman.core.logging import get_logger
 from lightman.core.timebase import utc_now_iso
 from lightman.events.blinkrate import blink_rate_events
 from lightman.events.blinks import blink_threshold
+from lightman.events.gestures import StreamingHeadGestures
 from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
 from lightman.features.action_units import OPENGRAPHAU_NAMES
@@ -39,10 +40,12 @@ from lightman.features.derived import (
 from lightman.features.eyes import eye_aspect_ratios
 from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
+from lightman.features.rppg import PulseEstimate, StreamingPulse, pulse_events, skin_means
 from lightman.features.smoothing import StreamingMedian
 from lightman.features.table import FeatureTableBuilder
 from lightman.interpretation.cues import cue_profile
 from lightman.interpretation.expressions import StreamingExpressionDetector
+from lightman.interpretation.novelty import AUNoveltyDetector
 from lightman.live.streaming import (
     StreamingBaseline,
     StreamingBlinkDetector,
@@ -101,6 +104,7 @@ class FrameResult:
     landmarks_xy: npt.NDArray[np.float32] | None
     new_events: list[Event]
     baseline_ready: bool
+    pulse: PulseEstimate | None = None
 
 
 class LiveAnalyzer:
@@ -149,6 +153,26 @@ class LiveAnalyzer:
         self.expressions: StreamingExpressionDetector | None = None
         self._prev_head: tuple[float, float, float] | None = None
         self._prev_t_us: int | None = None
+        self.pulse = (
+            StreamingPulse(window_s=cfg.pulse.window_s, min_quality=cfg.events.min_frame_quality)
+            if cfg.pulse.enabled
+            else None
+        )
+        self.gestures: StreamingHeadGestures | None = None
+        self.novelty = (
+            AUNoveltyDetector(
+                subject_id=subject_id,
+                extractor_id=landmarker.provenance.extractor_id,
+                id_start=750_000,
+                threshold=cfg.novelty.threshold,
+                min_ms=cfg.novelty.min_ms,
+            )
+            if cfg.novelty.enabled and au_detector is not None
+            else None
+        )
+        self._thumbs: dict[str, bytes] = {}
+        """JPEG crops at the emission frame for episodes, patterns, gestures and novelties."""
+        self._last_rgb: npt.NDArray[np.uint8] | None = None
         """Set by the caller from the audio stream: True while speech is detected."""
 
     @property
@@ -211,6 +235,8 @@ class LiveAnalyzer:
                 rgb, (bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
             )
             quality = face_quality(width_px, yaw, pitch) * image_quality_factor(blur, luma)
+            skin = skin_means(rgb, face.landmarks, w, h) if self.pulse is not None else None
+            pulse_now = self.pulse.push(t_us, skin, quality) if self.pulse and skin else None
             aus = None
             if (
                 self.au_detector is not None
@@ -242,9 +268,11 @@ class LiveAnalyzer:
                 derived=(gz_h, gz_v, as_b, as_s, speed),
                 blur=blur,
                 luma=luma,
+                skin=skin,
             )
             self.stats.frames_with_face += 1
         else:
+            pulse_now = None
             self.builder.add_frame(
                 frame_index=self._frame_index,
                 source_index=self._frame_index,
@@ -272,6 +300,8 @@ class LiveAnalyzer:
         speaking = speaking_now
         state = STATE_SPEAKING if speaking else STATE_SILENT
         if not self.baseline.ready:
+            if self.novelty is not None:
+                self.novelty.update(t_us, quality, values)  # learning the familiar combinations
             if self.baseline.update(t_us, quality, values, speaking=speaking):
                 self._arm_detectors()
                 self.baseline_just_ready = True
@@ -290,6 +320,12 @@ class LiveAnalyzer:
             )
             if self.expressions is not None:
                 new_events += self.expressions.update(t_us, quality, values)
+            if self.gestures is not None and "head.yaw_deg" in values:
+                new_events += self.gestures.update(
+                    t_us, quality, values["head.yaw_deg"], values["head.pitch_deg"]
+                )
+            if self.novelty is not None:
+                new_events += self.novelty.update(t_us, quality, values)
             if self.adaptive is not None:
                 st = state if state in self.adaptive.states() else STATE_ALL
                 self.adaptive.update(st, t_us, values)
@@ -300,6 +336,7 @@ class LiveAnalyzer:
             kept = [tag_speaking(e) for e in kept]  # no speaking baseline: flag articulation
         kept += self.episodes.add(kept, t_us)
         self.events.extend(kept)
+        self._thumbnail(rgb, bbox, kept)
         return FrameResult(
             t_us=t_us,
             face=bool(faces),
@@ -309,7 +346,52 @@ class LiveAnalyzer:
             landmarks_xy=lm_xy,
             new_events=kept,
             baseline_ready=self.baseline.ready,
+            pulse=pulse_now,
         )
+
+    _THUMB_TYPES = ("episode", "expression_pattern", "head_gesture", "au_novelty")
+
+    def _thumbnail(
+        self,
+        rgb: npt.NDArray[np.uint8],
+        bbox: tuple[float, float, float, float] | None,
+        events: list[Event],
+    ) -> None:
+        """Keep a small JPEG of the current frame for events worth revisiting (bounded count)."""
+        if not self.cfg.storage.event_thumbnails or len(self._thumbs) >= 200:
+            return
+        wanted = [e for e in events if e.event_type in self._THUMB_TYPES]
+        if not wanted:
+            return
+        import cv2
+
+        h, w = rgb.shape[:2]
+        if bbox and all(math.isfinite(v) for v in bbox):
+            x0, y0, x1, y1 = bbox
+            cx, cy = (x0 + x1) / 2 * w, (y0 + y1) / 2 * h
+            half = max((x1 - x0) * w, (y1 - y0) * h) * 0.75
+            crop = rgb[
+                int(max(0, cy - half)) : int(min(h, cy + half)),
+                int(max(0, cx - half)) : int(min(w, cx + half)),
+            ]
+        else:
+            crop = rgb
+        if crop.size == 0:
+            return
+        scale = self.cfg.storage.thumbnail_max_px / max(crop.shape[:2])
+        if scale < 1:
+            crop = np.asarray(
+                cv2.resize(crop, (int(crop.shape[1] * scale), int(crop.shape[0] * scale))),
+                dtype=np.uint8,
+            )
+        ok, buf = cv2.imencode(
+            ".jpg", cv2.cvtColor(crop, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 82]
+        )
+        if not ok:
+            return
+        data = buf.tobytes()
+        for e in wanted:
+            self._thumbs[e.event_id] = data
 
     def _arm_detectors(self) -> None:
         snap = self.baseline.snapshot
@@ -339,6 +421,17 @@ class LiveAnalyzer:
             baseline_quality=snap.quality,
             frame_period_us=self.period_us,
         )
+        if self.cfg.gestures.enabled:
+            self.gestures = StreamingHeadGestures(
+                subject_id=self.subject_id,
+                extractor_id=ext,
+                baseline_quality=snap.quality,
+                id_start=700_000,
+                nod_min_deg=self.cfg.gestures.nod_min_deg,
+                shake_min_deg=self.cfg.gestures.shake_min_deg,
+            )
+        if self.novelty is not None:
+            self.novelty.finish_learning(snap.quality)
         self.blinks = StreamingBlinkDetector(
             self.cfg.events,
             blink_threshold(snap, self.cfg.events),
@@ -399,8 +492,41 @@ class LiveAnalyzer:
             self.baseline.finalize()
         snap = self.baseline.snapshot
         assert snap is not None  # noqa: S101
+        pulse_summary: dict[str, Any] | None = None
+        if self.pulse is not None and self.pulse.estimates:
+            pev, pulse_summary = pulse_events(
+                self.pulse.estimates,
+                subject_id=self.subject_id,
+                extractor_id="rppg-pos",
+                baseline_quality=snap.quality,
+                id_start=800_000,
+                min_snr_db=self.cfg.pulse.min_snr_db,
+                min_change_bpm=self.cfg.pulse.min_change_bpm,
+                min_sustain_s=self.cfg.pulse.min_sustain_s,
+            )
+            self.events.extend(pev)
         session_dir = out_dir / self.session_id
         session_dir.mkdir(parents=True, exist_ok=True)
+        thumbs: dict[str, Path] = {}
+        if self._thumbs:
+            tdir = session_dir / "thumbnails"
+            tdir.mkdir(exist_ok=True)
+            for eid, data in self._thumbs.items():
+                dest = tdir / f"{eid}.jpg"
+                dest.write_bytes(data)
+                thumbs[eid] = dest
+        if self.pulse is not None and self.pulse.estimates:
+            pulse_path = session_dir / "pulse.json"
+            pulse_path.write_text(
+                json.dumps(
+                    {
+                        "t_us": [e.t_us for e in self.pulse.estimates],
+                        "bpm": [round(e.bpm, 1) for e in self.pulse.estimates],
+                        "snr_db": [round(e.snr_db, 2) for e in self.pulse.estimates],
+                        "min_snr_db": self.cfg.pulse.min_snr_db,
+                    }
+                )
+            )
 
         cols = self.builder.to_numpy()
         n = len(self.builder)
@@ -408,6 +534,8 @@ class LiveAnalyzer:
         feat_path = session_dir / "features.parquet"
         self.builder.write_parquet(feat_path)
         outputs.append(_artifact(feat_path, "parquet"))
+        if (session_dir / "pulse.json").is_file():
+            outputs.append(_artifact(session_dir / "pulse.json", "json"))
         self.events.sort(key=lambda e: (e.start_us, e.event_id))
         events_path = session_dir / "events.json"
         events_path.write_text(
@@ -443,6 +571,7 @@ class LiveAnalyzer:
                 k: sum(1 for e in self.events if e.event_type == k)
                 for k in sorted({e.event_type for e in self.events})
             },
+            "pulse": pulse_summary,
             **live_stats,
         }
         (session_dir / "analysis.json").write_text(json.dumps(_nan_to_none(analysis), indent=2))
@@ -550,6 +679,7 @@ class LiveAnalyzer:
             events=self.events,
             audio=None,
             mode="live",
+            pulse=pulse_summary,
         )
         analysis["narrative"] += cues_narrative(analysis.get("session_cues"))
         if protocol is not None:
@@ -580,7 +710,7 @@ class LiveAnalyzer:
                 baseline=snap,
                 events=self.events,
                 table=cols,
-                thumbnails={},
+                thumbnails=thumbs,
                 disclaimer=DISCLAIMER,
                 signals_to_plot=self.cfg.events.signals,
             )

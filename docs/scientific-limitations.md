@@ -112,6 +112,22 @@ AU5/26" a brow flash). The exclusion sharpens the description; it does not make 
 truer. Duchenne smiles (with AU6) occur in politeness too, and lip-corner-only smiles occur in
 genuine amusement. The counts of each kind are reported as counts.
 
+## Camera pulse estimate
+
+rPPG recovers a pulse rate from skin color changes. Under good light with a still subject it
+tracks a contact sensor within a few bpm; with motion, speech, dim or flickering light and low
+skin contrast it fails, and it fails more often for darker skin tones (Nowara et al. 2020).
+Lightman gates every window on its SNR and shows nothing below the gate. A pulse change is a
+measurement of the estimate, not of arousal, stress or deception; posture, talking and
+laughing move it as much as anything else.
+
+## Head gestures and unfamiliar AU pairings
+
+A nod or a shake is a kinematic pattern. It says nothing about "yes" or "no" without the words,
+which Lightman does not transcribe. "New AU pairing" means two Action Units were active
+together for the first time after calibration; with a 40 s calibration most conversational
+faces will produce several such pairings early on, and the count falls as the session goes.
+
 ## Deception-research cues
 
 The cue profile lists literature cues (DePaulo et al. 2003; Sporer & Schwandt 2006; Leal &

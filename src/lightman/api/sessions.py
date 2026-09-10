@@ -82,6 +82,7 @@ class SessionStore:
             "speech_segments.json",
             "protocol.json",
             "state_baselines.json",
+            "pulse.json",
         }:
             raise SessionNotFoundError("unknown artifact")
         p = d / name

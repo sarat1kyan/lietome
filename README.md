@@ -43,7 +43,8 @@ Produces `output/<session_id>/`:
 | `features.parquet` | per-frame table: us timestamps, head pose, eye aspect ratio, 52 blendshape coefficients, 41 Action Unit probabilities, quality |
 | `audio_features.parquet`, `speech_segments.json`, `audio_baseline.json` | 20 ms voice frames (F0, energy, voicing, speech probability), speech segments with pause/rate/pitch statistics, speaker baseline |
 | `baseline.json` | robust per-signal baseline (median, 1.4826,MAD, sample counts, reliability) |
-| `events.json` | blinks, per-signal baseline deviations, co-occurrence clusters - each with contributors, confidence, quality, provenance |
+| `events.json` | blinks, per-signal baseline deviations, episodes, FACS expression patterns, head nods/shakes, unfamiliar AU pairings, pulse-estimate changes, voice events - each with contributors, confidence, quality, provenance |
+| `pulse.json` | camera pulse estimate per second (rPPG, POS) with SNR; gated below 3 dB |
 | `analysis.json` | summary statistics and stage timings |
 | `report.html` | self-contained inspection report: timelines in SD units, ranked events, thumbnails |
 | `manifest.json` | versions, model hashes, environment, config snapshot, output hashes |

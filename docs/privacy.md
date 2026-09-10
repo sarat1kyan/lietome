@@ -10,6 +10,7 @@ Lightman processes biometric behavioral data. Defaults are local-only and minima
 | Decoded frames | Process memory only. | No. |
 | Landmarks (478x3/frame) | Process memory; turned into scalar features. | No (unless `storage.store_landmarks = true`, currently unimplemented flag reserved). |
 | Blendshape coefficients, head pose, EAR, quality | `features.parquet` | Yes (session dir). |
+| Skin color means (3 floats/frame over forehead and cheeks, for the pulse estimate) | `features.parquet`, `pulse.json` | Yes (session dir). Not an identifier; disable with `[pulse] enabled = false`. |
 | Face crops | `thumbnails/*.jpg` and inline in `report.html` at event peaks. | Yes, if `storage.event_thumbnails = true` (default). Disable with `--no-thumbnails`. |
 | File name + SHA-256 of input | `metadata.json`, `manifest.json` | Yes. Absolute paths are never stored. |
 | Subject identity | Anonymous id (`subject_001`) chosen by the operator. | Yes. |

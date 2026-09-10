@@ -53,6 +53,7 @@ def build_narrative(
     events: list[Event],
     audio: dict[str, Any] | None,
     mode: str,
+    pulse: dict[str, Any] | None = None,
 ) -> list[str]:
     lines: list[str] = []
     dur = format_timecode(duration_us)
@@ -146,6 +147,40 @@ def build_narrative(
                 "(AU12 without AU6). The split is descriptive; both kinds occur in genuine "
                 "enjoyment and in politeness."
             )
+    gestures = [e for e in events if e.event_type == "head_gesture"]
+    if gestures:
+        nods = sum("nod" in e.tags for e in gestures)
+        shakes = len(gestures) - nods
+        lines.append(
+            f"Head gestures: {nods} nods and {shakes} shakes. They mark rhythm, listening, "
+            "agreement or disagreement; the movement alone does not say which."
+        )
+    novel = [e for e in events if e.event_type == "au_novelty"]
+    if novel:
+        listed = ", ".join(e.label.replace("new AU pairing: ", "") for e in novel[:4])
+        lines.append(
+            f"{len(novel)} Action Unit pairings appeared that never co-occurred during "
+            f"calibration (first at {format_timecode(novel[0].start_us)}): {listed}"
+            f"{', ...' if len(novel) > 4 else ''}. Each pairing is reported once."
+        )
+    if pulse and pulse.get("reference_bpm") is not None:
+        pev = [e for e in events if e.event_type == "pulse_change"]
+        uf = pulse.get("usable_fraction") or 0.0
+        s = (
+            f"Camera pulse estimate: about {pulse['median_bpm']:.0f} bpm overall, reference "
+            f"{pulse['reference_bpm']:.0f} bpm; usable in {uf:.0%} of windows."
+        )
+        if pev:
+            s += f" {len(pev)} sustained change{'s' if len(pev) != 1 else ''} from the reference."
+        lines.append(
+            s + " This is an optical estimate that fails with motion, poor light and low "
+            "contrast; it is not a medical reading."
+        )
+    elif pulse is not None:
+        lines.append(
+            "Camera pulse estimate: not usable in this session (too much motion or too little "
+            "signal), so nothing is reported."
+        )
     lines.append(
         "These are measurements of movement and voice relative to this person's own baseline. They "
         "do not identify emotions, intent or truthfulness."

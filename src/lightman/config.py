@@ -187,6 +187,36 @@ class EventsConfig(BaseModel):
     blink_max_ms: int = Field(default=500, ge=0)
 
 
+class PulseConfig(BaseModel):
+    """Camera pulse estimate (rPPG). Off means no skin means are stored either."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    window_s: float = Field(default=10.0, ge=5.0, le=30.0)
+    min_snr_db: float = Field(default=3.0, description="Estimates below this are not shown")
+    min_change_bpm: float = Field(default=10.0, ge=3.0)
+    min_sustain_s: float = Field(default=5.0, ge=1.0)
+
+
+class GesturesConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    nod_min_deg: float = Field(default=3.0, gt=0, description="Minimum pitch swing per nod")
+    shake_min_deg: float = Field(default=4.0, gt=0, description="Minimum yaw swing per shake")
+
+
+class NoveltyConfig(BaseModel):
+    """Unfamiliar AU combinations: sets of AUs never active together during calibration."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    threshold: float = Field(default=0.5, gt=0, lt=1, description="AU active above this")
+    min_ms: int = Field(default=300, ge=0)
+
+
 class StorageConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -220,6 +250,9 @@ class LightmanConfig(BaseModel):
     limits: MediaLimits = MediaLimits()
     baseline: BaselineConfig = BaselineConfig()
     events: EventsConfig = EventsConfig()
+    pulse: PulseConfig = PulseConfig()
+    gestures: GesturesConfig = GesturesConfig()
+    novelty: NoveltyConfig = NoveltyConfig()
     storage: StorageConfig = StorageConfig()
     privacy: PrivacyConfig = PrivacyConfig()
     models: ModelsConfig = ModelsConfig()

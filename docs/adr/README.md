@@ -23,3 +23,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 016 | Interview protocol mode | accepted |
 | 017 | Expression patterns and the deception-research cue layer | accepted |
 | 018 | Exclusion AUs in prototypes, per-signal event rules, frame readout | accepted |
+| 019 | Camera pulse estimate, head gestures, unfamiliar AU pairings | accepted |
