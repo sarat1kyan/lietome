@@ -117,6 +117,10 @@ def create_app(
         wanted = [s for s in signals.split(",") if s]
         return store.features(session_id, table=table, signals=wanted, max_points=max_points)
 
+    @app.get("/api/sessions/{session_id}/history")
+    def get_history(session_id: str) -> dict[str, Any]:
+        return store.history(session_id)
+
     @app.get("/api/sessions/{session_id}/compare")
     def get_compare(
         session_id: str,

@@ -22,6 +22,7 @@
   const RULER_H = 22
   const EVENT_H = 26
   const DENSITY_H = 12
+  const EXPR_H = 16
   let drag = $state<{ x0: number; x1: number } | null>(null)
 
   let canvas = $state<HTMLCanvasElement | null>(null)
@@ -48,7 +49,7 @@
 
   const hasPulse = $derived(Boolean(pulse && pulse.t_us.length > 2))
   const total = $derived(Math.max(duration, ...lanes.map((l) => l.t[l.t.length - 1] ?? 0), 1))
-  const TOP = RULER_H + EVENT_H + DENSITY_H
+  const TOP = RULER_H + EVENT_H + DENSITY_H + EXPR_H
   const height = $derived(TOP + (lanes.length + (hasPulse ? 1 : 0)) * LANE_H + 8)
   // change density: per 2 s bin, number of deviation events active and the max severity
   const density = $derived.by(() => {
@@ -128,6 +129,21 @@
         const a = Math.min(1, 0.15 + d.count[i] / 6), hot = d.sev[i] >= 6
         ctx.fillStyle = hot ? col.accent : col.cool; ctx.globalAlpha = a
         ctx.fillRect(xOf(i * d.bin), dy + 2, Math.max(1, xOf((i + 1) * d.bin) - xOf(i * d.bin)), DENSITY_H - 4)
+      }
+      ctx.globalAlpha = 1
+    }
+    // expression lane: one segment per pattern, violet by valence
+    {
+      const ey2 = RULER_H + EVENT_H + DENSITY_H
+      ctx.fillStyle = col.muted; ctx.fillText('expressions', 8, ey2 + EXPR_H / 2)
+      for (const e of events) {
+        if (e.event_type !== 'expression_pattern') continue
+        const neg = e.tags.includes('negative'), fast = e.tags.includes('fast_onset')
+        ctx.fillStyle = neg ? cssVar('--warn') : e.tags.includes('happiness') || e.tags.includes('social smile') ? cssVar('--ok') : cssVar('--violet')
+        ctx.globalAlpha = fast ? 1 : 0.7
+        const x0 = xOf(e.start_us), x1 = Math.max(x0 + (fast ? 3 : 2), xOf(e.end_us))
+        ctx.fillRect(x0, ey2 + 3, x1 - x0, EXPR_H - 6)
+        if (fast) { ctx.fillStyle = col.text; ctx.fillRect(x0, ey2 + 1, x1 - x0, 1) }
       }
       ctx.globalAlpha = 1
     }
@@ -252,6 +268,11 @@
     const us = usOf(x)
     if (y >= RULER_H && y < RULER_H + EVENT_H) {
       const hit = events.filter((ev) => ev.event_type !== 'blink' && ev.start_us <= us && us <= ev.end_us).sort((a, b) => b.severity - a.severity)[0]
+      if (hit) { onpick(hit); return }
+    }
+    const ey2 = RULER_H + EVENT_H + DENSITY_H
+    if (y >= ey2 && y < ey2 + EXPR_H) {
+      const hit = events.filter((ev) => ev.event_type === 'expression_pattern' && ev.start_us <= us && us <= ev.end_us)[0]
       if (hit) { onpick(hit); return }
     }
     onseek(us)

@@ -63,7 +63,8 @@ def test_happiness_pattern_and_brief_tag() -> None:
     assert h.level is EvidenceLevel.INTERPRETATION and "brief" not in h.tags
     assert abs(h.start_us - 100 * 33_333) < 40_000 and "not a felt emotion" in h.description
     s = names["surprise"]
-    assert "brief" in s.tags and s.label.startswith("brief expression pattern: surprise")
+    assert "brief" in s.tags and "fast_onset" in s.tags
+    assert s.label.startswith("microexpression candidate: expression pattern: surprise")
     assert "fear" not in names  # AU4/AU7/AU20 stayed low
 
 

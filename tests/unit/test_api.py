@@ -66,6 +66,8 @@ def test_session_detail_events_features(client: TestClient) -> None:
     assert set(cmp["events"]) <= {e["event_type"] for e in ev}
     bad = client.get(f"/api/sessions/{sid}/compare", params={"a0": 5, "a1": 5, "b0": 0, "b1": 1})
     assert bad.status_code == 422
+    h = client.get(f"/api/sessions/{sid}/history").json()
+    assert h["subject_id"] and len(h["sessions"]) == 1 and h["shifts"] == []
     thumb_ok = [e for e in ev if e["event_type"] != "blink"]
     r = client.get(f"/api/sessions/{sid}/thumbnails/{thumb_ok[0]['event_id']}")
     assert r.status_code in (200, 404)

@@ -1,6 +1,20 @@
 <script lang="ts">
   import type { LmEvent, SessionDetail } from '../lib/types'
   import CueGauge from './CueGauge.svelte'
+  let copied = $state(false)
+  async function copySummary() {
+    const a = detail.analysis ?? {}
+    const lines = [
+      `Lightman session ${a.session_id ?? ''} (${a.mode ?? 'prerecorded'})`,
+      ...narrative,
+      '',
+      'Event counts: ' + Object.entries(a.event_counts ?? {}).map(([k, v]) => `${k} ${v}`).join(', '),
+      cues?.index?.text ?? '',
+      '',
+      'Measurements of movement and voice against this person\'s own baseline. Not a lie detector.',
+    ]
+    try { await navigator.clipboard.writeText(lines.filter((l) => l != null).join('\n')); copied = true; setTimeout(() => (copied = false), 1500) } catch { copied = false }
+  }
   let { detail, events }: { detail: SessionDetail; events: LmEvent[] } = $props()
   const narrative = $derived((detail.analysis?.narrative ?? []) as string[])
   const contributors = $derived.by(() => {
@@ -42,7 +56,7 @@
     {#each stats as s (s.k)}<div class="stat {s.c}"><span class="mono v">{s.v}</span><span class="k">{s.k}</span></div>{/each}
   </div>
   <div class="col">
-    <div class="eyebrow">what happened, in plain words</div>
+    <div class="eyebrow row-hdr">what happened, in plain words <button class="copy" onclick={copySummary}>{copied ? 'copied' : 'copy summary'}</button></div>
     <ul class="narr">
       {#each narrative as line}<li>{line}</li>{:else}<li class="muted">no narrative in this session (older format)</li>{/each}
     </ul>
@@ -85,6 +99,8 @@
   .stat .v { font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
   .stat .k { font-size: 10.5px; color: var(--muted); letter-spacing: 0.03em; text-transform: uppercase; }
   .stat.accent { border-left-color: var(--accent); } .stat.violet { border-left-color: var(--violet); } .stat.cool { border-left-color: var(--cool); } .stat.teal { border-left-color: var(--teal); } .stat.pulse { border-left-color: var(--pulse); }
+  .row-hdr { display: flex; justify-content: space-between; align-items: center; }
+  .copy { padding: 1px 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
   .narr { margin: 6px 0 0; padding-left: 16px; font-size: 13px; line-height: 1.5; max-width: 72ch; }
   .narr li { margin-bottom: 3px; }
   .bars { display: grid; gap: 4px; margin-top: 6px; }

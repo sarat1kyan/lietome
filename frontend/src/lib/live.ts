@@ -13,6 +13,7 @@ export interface LiveFrameMsg {
   baseline_ready: boolean
   pulse: { bpm: number; snr_db: number; usable: boolean } | null
   pulse_wave?: number[] | null
+  hints?: string[]
   gaze_away_since_us?: number | null
   stats: { analyzed_fps: number; latency_ms_p50: number | null; frames_dropped: number; frames_analyzed: number }
 }
@@ -31,7 +32,7 @@ export interface LiveErrorMsg { type: 'error'; detail: string }
 export type LiveMsg = LiveFrameMsg | LiveEventsMsg | LiveAudioMsg | LiveSessionMsg | LiveBaselineMsg | LiveBaselineUpdateMsg | LiveErrorMsg | { type: 'ready'; session_id: string } | { type: 'marked'; id: string; t_us: number } | LiveQuestionSummaryMsg
 
 export interface LiveOptions {
-  au: boolean
+  au: boolean; subject?: string;
   audio: boolean
   fps: number
   width: number
@@ -76,7 +77,7 @@ export class LiveSession {
     this.ws = new WebSocket(`${proto}://${location.host}${base}/api/live`)
     this.ws.binaryType = 'arraybuffer'
     this.ws.onopen = () => {
-      this.ws!.send(JSON.stringify({ type: 'start', au: this.opts.au, audio: this.opts.audio, source: 'browser camera' }))
+      this.ws!.send(JSON.stringify({ type: 'start', au: this.opts.au, audio: this.opts.audio, source: 'browser camera', subject: this.opts.subject ?? 'subject_001' }))
     }
     this.ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data) as LiveMsg

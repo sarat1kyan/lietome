@@ -1,4 +1,4 @@
-import type { CompareResult, FeatureSeries, FrameSnapshot, LmEvent, PulseSeries, Range, SessionDetail, SessionSummary } from './types'
+import type { CompareResult, FeatureSeries, FrameSnapshot, History, LmEvent, PulseSeries, Range, SessionDetail, SessionSummary } from './types'
 
 // Demo mode: a build can inline a session (window.__LIGHTMAN_DEMO__) so the UI runs with no server.
 declare global {
@@ -39,6 +39,10 @@ export const api = {
     if (d) return d.features[id][table]
     const q = new URLSearchParams({ table, signals: signals.join(','), max_points: String(maxPoints) })
     return getJson(`./api/sessions/${id}/features?${q}`)
+  },
+  async history(id: string): Promise<History> {
+    if (demo()) return { subject_id: 'demo', sessions: [], shifts: [] }
+    return getJson(`./api/sessions/${id}/history`)
   },
   async compare(id: string, a: Range, b: Range): Promise<CompareResult> {
     const q = new URLSearchParams({ a0: String(Math.round(a[0])), a1: String(Math.round(a[1])), b0: String(Math.round(b[0])), b1: String(Math.round(b[1])) })

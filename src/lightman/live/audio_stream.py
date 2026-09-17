@@ -20,6 +20,7 @@ from lightman.audio.vad import CHUNK, CONTEXT, SileroVAD
 from lightman.config import LightmanConfig
 from lightman.live.streaming import StreamingBaseline, StreamingDeviationDetector
 from lightman.schema import Event
+from lightman.schema.events import EvidenceLevel, FeatureContribution
 
 VOICED_ENERGY_FLOOR_DB = -50.0
 RATE_WINDOW_HOPS = 100  # 2 s of 20 ms hops for the speech-rate proxy
@@ -60,6 +61,9 @@ class StreamingAudioAnalyzer:
         )
         self._energy_hist: list[float] = []
         self._speech_hist: list[bool] = []
+        self._last_speech_us: int | None = None
+        self._in_speech = False
+        self._pause_k = 900_000
         self.detector: StreamingDeviationDetector | None = None
         self.events: list[Event] = []
         self._id_start = id_start
@@ -104,6 +108,7 @@ class StreamingAudioAnalyzer:
                 if not voiced:
                     f0 = None
             speaking_hop = self._speech_prob >= self.cfg.audio.vad_threshold
+            pause_events = self._track_pauses(center_us, speaking_hop)
             self._energy_hist.append(energy)
             self._speech_hist.append(speaking_hop)
             if len(self._energy_hist) > RATE_WINDOW_HOPS:
@@ -145,6 +150,7 @@ class StreamingAudioAnalyzer:
                     for e in self.detector.update(center_us, quality, values)
                     if e.start_us >= self._warmup_us
                 ]
+                new_events += pause_events
                 self.events.extend(new_events)
             self.hops.append(
                 (
@@ -171,6 +177,60 @@ class StreamingAudioAnalyzer:
             self._buf = self._buf[HOP:]
             self._consumed += HOP
             self._buf_t0_us += int(HOP * 1_000_000 / RATE)
+        return out
+
+    def _track_pauses(self, t_us: int, speaking: bool) -> list[Event]:
+        """Within-speech gaps of at least ``audio.long_pause_ms`` (after the baseline is ready)."""
+        out: list[Event] = []
+        if speaking:
+            if (
+                not self._in_speech
+                and self._last_speech_us is not None
+                and self.baseline.ready
+                and t_us - self._last_speech_us >= self.cfg.audio.long_pause_ms * 1000
+            ):
+                gap_ms = (t_us - self._last_speech_us) / 1000
+                out.append(
+                    Event(
+                        event_id=f"ev_{self._pause_k:05d}",
+                        subject_id=self.subject_id,
+                        source="audio",
+                        event_type="speech_pause",
+                        level=EvidenceLevel.OBSERVATION,
+                        start_us=self._last_speech_us,
+                        end_us=t_us,
+                        peak_us=self._last_speech_us,
+                        label=f"speech pause: {gap_ms / 1000:.1f} s",
+                        description=(
+                            f"No speech for {gap_ms:.0f} ms between two stretches of speech. "
+                            "Pauses mark thinking, turn-taking and breathing; the deception "
+                            "literature finds pause measures small and inconsistent."
+                        ),
+                        contributions=[
+                            FeatureContribution(
+                                feature="voice.pause_ms",
+                                unit="ms",
+                                peak_value=gap_ms,
+                                baseline_center=float(self.cfg.audio.long_pause_ms),
+                                baseline_scale=float(self.cfg.audio.long_pause_ms) / 2,
+                                peak_deviation=(gap_ms - self.cfg.audio.long_pause_ms)
+                                / (self.cfg.audio.long_pause_ms / 2),
+                                direction="increase",
+                            )
+                        ],
+                        severity=round(min(10.0, gap_ms / 1000), 2),
+                        confidence=0.7,
+                        quality=1.0,
+                        baseline_quality=1.0,
+                        extractor_id=self.vad.provenance.extractor_id,
+                        tags=["pause"],
+                    )
+                )
+                self._pause_k += 1
+            self._in_speech = True
+            self._last_speech_us = t_us
+        else:
+            self._in_speech = False
         return out
 
     def f0_z(self) -> tuple[np.ndarray, np.ndarray] | None:

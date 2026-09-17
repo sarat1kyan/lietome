@@ -157,6 +157,22 @@ def build_narrative(
             f"Head gestures: {nods} nods and {shakes} shakes. They mark rhythm, listening, "
             "agreement or disagreement; the movement alone does not say which."
         )
+    still = [e for e in events if e.event_type == "stillness"]
+    if still:
+        longest = max(still, key=lambda e: e.end_us - e.start_us)
+        lines.append(
+            f"The head went still {len(still)} times for 3 s or more (longest "
+            f"{(longest.end_us - longest.start_us) / 1e6:.0f} s at "
+            f"{format_timecode(longest.start_us)}); listening and concentration look the same."
+        )
+    fast = [e for e in events if e.event_type == "expression_pattern" and "fast_onset" in e.tags]
+    if fast:
+        listed = ", ".join(f"{_pattern_name(e)} at {format_timecode(e.start_us)}" for e in fast[:4])
+        lines.append(
+            f"{len(fast)} microexpression candidates (brief, fast onset): {listed}"
+            f"{', ...' if len(fast) > 4 else ''}. Candidates only; confirmation needs high frame "
+            "rate video and FACS coders."
+        )
     away = [e for e in events if e.event_type == "gaze_away"]
     if away:
         total_s = sum((e.end_us - e.start_us) / 1e6 for e in away)
@@ -200,6 +216,13 @@ def build_narrative(
     return lines
 
 
+_META_TAGS = frozenset({"expression", "brief", "fast_onset", "negative", "positive", "neutral"})
+
+
+def _pattern_name(e: Event) -> str:
+    return next((t for t in e.tags if t not in _META_TAGS), "pattern")
+
+
 def cues_narrative(cues: dict[str, Any] | None) -> list[str]:
     if not cues or not cues.get("evaluated"):
         return []
@@ -226,10 +249,11 @@ def protocol_narrative(protocol: Any) -> list[str]:
         rl = q.get("response_latency_ms")
         lat = f"answered after {rl:.0f} ms" if rl is not None else "no speech onset detected"
         top = ", ".join(_human_signal(t["feature"]) for t in q.get("top_signals", [])[:2]) or "none"
+        pats = ", ".join(q.get("expression_patterns", [])[:3])
         lines.append(
             f"Q{q['id'].lstrip('q')} ({q['category']}): {lat}; {q['deviations']} deviations "
             f"({q['deviations_per_min']:.0f}/min), strongest {q['max_severity']:.0f} SD; "
-            f"signals: {top}."
+            f"signals: {top}" + (f"; patterns: {pats}" if pats else "") + "."
         )
     cvr = d.get("control_vs_relevant") or {}
     if cvr.get("delta_deviations_per_min") is not None:

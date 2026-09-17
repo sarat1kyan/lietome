@@ -245,4 +245,5 @@ def test_protocol_possibility_compares_relevant_with_control() -> None:
     assert q3.cue_index is not None and q3.cue_index["value"] > 60
     assert ps.possibility is not None
     assert ps.possibility["top_question"] == "q3" and ps.possibility["delta"] > 10
+    assert ps.possibility["delta_ci95"] is None  # one relevant question: no interval
     assert "possibility" in ps.possibility["text"] and "not a probability" in ps.possibility["text"]

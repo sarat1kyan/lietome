@@ -43,6 +43,7 @@ export interface HudInput {
   phase: string | null
   ticker: string | null
   lastIndex: { id: string; value: number | null; band: string } | null
+  hints: string[]
   full: boolean
 }
 
@@ -209,7 +210,7 @@ export function drawHud(inp: HudInput) {
   // ---- left: pattern meter
   {
     const pats = patternScores(v).filter((p) => p.score >= 0.2).slice(0, 4)
-    const pw = 236, px = 12, py = 96
+    const pw = 236, px = 12, py = inp.hints.length ? 126 : 96
     const ph = 30 + Math.max(1, pats.length) * 18
     panel(ctx, px, py, pw, ph)
     ctx.fillStyle = C.muted; ctx.font = mono(10); ctx.fillText('FACS PATTERN   appearance, not feeling', px + 10, py + 13)
@@ -302,6 +303,17 @@ export function drawHud(inp: HudInput) {
       panel(ctx, x, y, tw, 26)
       ctx.fillStyle = C.text; ctx.fillText(inp.ticker.length > 90 ? inp.ticker.slice(0, 88) + '...' : inp.ticker, x + 12, y + 13)
     }
+  }
+
+  // ---- capture coaching banner (top, under the status block)
+  if (inp.hints.length) {
+    const txt = inp.hints.slice(0, 2).join('   ')
+    ctx.font = sans(12)
+    const tw = ctx.measureText(txt).width + 24
+    const x = 12, y = 92
+    ctx.fillStyle = 'rgba(224,107,94,0.16)'; ctx.fillRect(x, y, tw, 24)
+    ctx.strokeStyle = C.warn; ctx.strokeRect(x + 0.5, y + 0.5, tw - 1, 23)
+    ctx.fillStyle = C.text; ctx.fillText(txt, x + 12, y + 12)
   }
 
   // ---- event flashes near the face box

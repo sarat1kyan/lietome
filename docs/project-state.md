@@ -99,6 +99,9 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   exclusion AUs (social smile, brow flash, lip press, brow furrow), per-signal thresholds and
   minimum durations, live voice table + pitch cue, frame readout and live overlays. Replay
   404 -> 268 deviations (167 -> 111/min).
+* ADR-022: stillness episodes, live pauses, microexpression candidate tier, lip bite, subject
+  history across sessions, capture coaching hints, bootstrap CI on the index delta, UI pass
+  (expression lane, sort/filter, copy summary, script templates, hotkeys).
 * ADR-021: possibility-of-deception cue index (weighted share of weak cues, with reliability
   and counters; per session, question, live answer), three new cues, three new prototypes
   (embarrassment, distress, tension), personal pattern thresholds, offline pattern detection

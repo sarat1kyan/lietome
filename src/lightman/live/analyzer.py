@@ -28,10 +28,14 @@ from lightman.events.blinkrate import blink_rate_events
 from lightman.events.blinks import blink_threshold
 from lightman.events.gaze import StreamingGazeAway
 from lightman.events.gestures import StreamingHeadGestures
+from lightman.events.stillness import StreamingStillness
 from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
 from lightman.features.action_units import OPENGRAPHAU_NAMES
 from lightman.features.derived import (
+    BLUR_FULL_CREDIT,
+    LUMA_HIGH_ZERO,
+    LUMA_LOW_FULL,
     asymmetry_from_blendshapes,
     frame_quality_terms,
     gaze_from_blendshapes,
@@ -106,6 +110,8 @@ class FrameResult:
     new_events: list[Event]
     baseline_ready: bool
     pulse: PulseEstimate | None = None
+    hints: list[str] = field(default_factory=list)
+    """Capture-quality coaching for the operator (move closer, more light, ...)."""
 
 
 class LiveAnalyzer:
@@ -170,6 +176,7 @@ class LiveAnalyzer:
         )
         self.gestures: StreamingHeadGestures | None = None
         self.gaze: StreamingGazeAway | None = None
+        self.stillness: StreamingStillness | None = None
         self.novelty = (
             AUNoveltyDetector(
                 subject_id=subject_id,
@@ -339,6 +346,8 @@ class LiveAnalyzer:
                 )
             if self.novelty is not None:
                 new_events += self.novelty.update(t_us, quality, values)
+            if self.stillness is not None and "head.speed_deg_s" in values:
+                new_events += self.stillness.update(t_us, quality, values["head.speed_deg_s"])
             if self.gaze is not None and "gaze.horizontal" in values:
                 new_events += self.gaze.update(
                     t_us,
@@ -358,6 +367,26 @@ class LiveAnalyzer:
         kept += self.episodes.add(kept, t_us)
         self.events.extend(kept)
         self._thumbnail(rgb, bbox, kept)
+        hints: list[str] = []
+        if not faces:
+            hints.append("no face in view")
+        else:
+            if width_px < max(120.0, float(cfg.au.min_face_px)):
+                hints.append("face small: move closer to the camera")
+            if math.isfinite(luma) and luma < LUMA_LOW_FULL:
+                hints.append("dim: more light on the face")
+            elif math.isfinite(luma) and luma > LUMA_HIGH_ZERO - 20:
+                hints.append("too bright: reduce the light or move away from it")
+            if math.isfinite(blur) and blur < BLUR_FULL_CREDIT * 0.5:
+                hints.append("soft image: hold still, clean the lens")
+            if yaw is not None and abs(yaw) > 25:
+                hints.append("turn toward the camera")
+        elapsed = time.monotonic() - self.stats.started_monotonic
+        if (
+            self.stats.frames_analyzed > 60
+            and self.stats.frames_analyzed / max(1e-6, elapsed) < 8.0
+        ):
+            hints.append("low frame rate: close other apps or lower the resolution")
         return FrameResult(
             t_us=t_us,
             face=bool(faces),
@@ -368,6 +397,7 @@ class LiveAnalyzer:
             new_events=kept,
             baseline_ready=self.baseline.ready,
             pulse=pulse_now,
+            hints=hints,
         )
 
     _THUMB_TYPES = ("episode", "expression_pattern", "head_gesture", "au_novelty", "gaze_away")
@@ -451,6 +481,16 @@ class LiveAnalyzer:
             )
         if self.novelty is not None:
             self.novelty.finish_learning(snap.quality)
+        sp = snap.signals.get("head.speed_deg_s")
+        if sp is not None and math.isfinite(sp.center):
+            self.stillness = StreamingStillness(
+                center_speed=sp.center,
+                subject_id=self.subject_id,
+                extractor_id=ext,
+                baseline_quality=snap.quality,
+                id_start=950_000,
+                frame_period_us=self.period_us,
+            )
         if self.cfg.gaze.enabled:
             self.gaze = StreamingGazeAway(
                 subject_id=self.subject_id,
@@ -626,6 +666,8 @@ class LiveAnalyzer:
             self.events.extend(self.expressions.flush(self._last_t or 0))
         if self.gaze is not None:
             self.events.extend(self.gaze.flush(self._last_t or 0))
+        if self.stillness is not None:
+            self.events.extend(self.stillness.flush(self._last_t or 0))
         if self.blinks is not None and self.baseline.snapshot is not None:
             self.events.extend(
                 blink_rate_events(

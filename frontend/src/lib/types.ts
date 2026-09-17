@@ -103,3 +103,6 @@ export interface CompareResult {
   frames?: { a: number; b: number }
   pulse_bpm?: { a: number | null; b: number | null }
 }
+
+export interface HistoryRow { session_id: string; created_utc: string | null; duration_us: number | null; mode: string; baseline_quality: number | null; centers: Record<string, number>; blink_rate_per_min: number | null; pulse_bpm: number | null; cue_index: number | null; episodes: number | null }
+export interface History { subject_id: string; sessions: HistoryRow[]; shifts: { signal: string; current: number; median_others: number; shift_sd: number | null; n_others: number }[] }

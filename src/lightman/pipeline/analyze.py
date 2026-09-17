@@ -33,6 +33,7 @@ from lightman.core.timebase import utc_now_iso
 from lightman.events import cluster_cooccurring, detect_blinks, detect_deviation_events
 from lightman.events.gaze import detect_gaze_away
 from lightman.events.gestures import detect_head_gestures
+from lightman.events.stillness import detect_stillness
 from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
 from lightman.features.derived import (
@@ -455,6 +456,19 @@ def analyze_video(
             id_start=700_000,
             nod_min_deg=cfg.gestures.nod_min_deg,
             shake_min_deg=cfg.gestures.shake_min_deg,
+        )
+    sp_base = baseline.signals.get("head.speed_deg_s")
+    if sp_base is not None and math.isfinite(sp_base.center):
+        extra += detect_stillness(
+            t_us=t_us,
+            quality=quality,
+            speed_deg_s=signals["head.speed_deg_s"],
+            center_speed=sp_base.center,
+            start_us=baseline.window_end_us,
+            subject_id=subject_id,
+            extractor_id=prov.extractor_id,
+            baseline_quality=baseline.quality,
+            id_start=950_000,
         )
     if cfg.gaze.enabled:
         extra += detect_gaze_away(

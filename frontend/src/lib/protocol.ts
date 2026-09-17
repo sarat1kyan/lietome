@@ -26,3 +26,32 @@ export function parseScript(text: string): ScriptQuestion[] {
   }
   return out
 }
+
+export const SCRIPT_TEMPLATES: { name: string; text: string }[] = [
+  { name: 'default mix', text: DEFAULT_SCRIPT },
+  { name: 'baseline truths first', text: `C: What is your full name?
+C: What city do you live in?
+C: What day of the week is it today?
+R: Did you take anything from the shared kitchen this week that was not yours?
+R: Have you ever read a message on someone else's phone without permission?
+C: Did you have coffee this morning?
+R: Have you lied to a friend this month to avoid meeting them?
+N: Describe your commute.` },
+  { name: 'mock theft game', text: `N: Tell me about your morning so far.
+C: Is today ${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][new Date().getDay()]}?
+R: Did you take the item from the desk?
+C: Are you sitting down right now?
+R: Do you know where the item is now?
+R: Did anyone help you?
+C: Have you eaten today?
+N: What will you do after this?` },
+]
+
+// Shuffle questions while keeping the first line first (a warm-up) and alternating categories where possible.
+export function shuffleScript(text: string): string {
+  const lines = text.split('\n').filter((l) => l.trim())
+  if (lines.length < 3) return text
+  const [head, ...rest] = lines
+  for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]] }
+  return [head, ...rest].join('\n')
+}

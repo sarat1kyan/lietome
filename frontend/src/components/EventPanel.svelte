@@ -4,7 +4,9 @@
   import { explain } from '../lib/explain'
   let { selected, events, session, baseline, onpick }: { selected: LmEvent | null; events: LmEvent[]; session: SessionSummary | null; baseline: Baseline | null; onpick: (e: LmEvent) => void } = $props()
   let filter = $state<'episodes' | 'expressions' | 'gestures' | 'pulse' | 'all' | 'video' | 'audio' | 'speaking'>('episodes')
-  const GESTURE_TYPES = ['head_gesture', 'eye_closure', 'blink_rate_change', 'gaze_away']
+  const GESTURE_TYPES = ['head_gesture', 'eye_closure', 'blink_rate_change', 'gaze_away', 'stillness']
+  let sortBy = $state<'severity' | 'time'>('severity')
+  let needle = $state('')
   const PULSE_TYPES = ['pulse_change', 'au_novelty']
   const hasEpisodes = $derived(events.some((e) => e.event_type === 'episode' || e.event_type === 'multi_signal_deviation'))
   const listed = $derived(
@@ -19,7 +21,8 @@
         if (filter === 'all') return true
         return e.source === filter
       })
-      .sort((a, b) => b.severity - a.severity),
+      .filter((e) => !needle.trim() || (e.label + ' ' + e.tags.join(' ')).toLowerCase().includes(needle.trim().toLowerCase()))
+      .sort((a, b) => (sortBy === 'severity' ? b.severity - a.severity : a.start_us - b.start_us)),
   )
   const sev = (v: number) => (v > 20 ? '>20' : v.toFixed(1))
   const blinks = $derived(events.filter((e) => e.event_type === 'blink').length)
@@ -73,15 +76,17 @@
       <span class="eyebrow">events <span class="mono">{listed.length}</span></span>
       <span class="muted mono">{blinks} blinks</span>
       <div class="filters">
+        <button class="sortbtn" onclick={() => (sortBy = sortBy === 'severity' ? 'time' : 'severity')} title="toggle sort">{sortBy === 'severity' ? 'by SD' : 'by time'}</button>
         {#each ['episodes', 'expressions', 'gestures', 'pulse', 'all', 'video', 'audio', 'speaking'] as f}
           <button class:on={filter === f} onclick={() => (filter = f as typeof filter)}>{f}</button>
         {/each}
       </div>
     </div>
+    <input class="search" type="search" placeholder="filter events" bind:value={needle} aria-label="filter events" />
     <ul>
       {#each listed as e (e.event_id)}
         <li>
-          <button class="ev" class:sel={selected?.event_id === e.event_id} class:audio={e.source === 'audio'} class:expr={e.event_type === 'expression_pattern' || e.event_type === 'au_novelty'} class:pulse={e.event_type === 'pulse_change'} class:gesture={e.event_type === 'head_gesture' || e.event_type === 'gaze_away'} onclick={() => onpick(e)}>
+          <button class="ev" class:sel={selected?.event_id === e.event_id} class:audio={e.source === 'audio'} class:expr={e.event_type === 'expression_pattern' || e.event_type === 'au_novelty'} class:pulse={e.event_type === 'pulse_change'} class:gesture={e.event_type === 'head_gesture' || e.event_type === 'gaze_away' || e.event_type === 'stillness'} onclick={() => onpick(e)}>
             <span class="sev mono">{sev(e.severity)}</span>
             <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span>
             <span class="t mono muted">{tc(e.start_us).slice(3)}</span>
@@ -142,4 +147,6 @@
   .why { display: grid; grid-template-columns: 62px 1fr; gap: 4px 10px; margin: 8px 0 10px; font-size: 11.5px; line-height: 1.45; }
   .why dt { color: var(--muted); font: 500 10px/1.6 var(--font-data); letter-spacing: 0.06em; text-transform: uppercase; }
   .why dd { margin: 0; color: var(--text); }
+  .search { width: 100%; box-sizing: border-box; margin: 6px 0 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); padding: 3px 8px; font-size: 11.5px; }
+  .sortbtn { color: var(--text) !important; }
 </style>
