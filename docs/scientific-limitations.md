@@ -142,6 +142,17 @@ which Lightman does not transcribe. "New AU pairing" means two Action Units were
 together for the first time after calibration; with a 40 s calibration most conversational
 faces will produce several such pairings early on, and the count falls as the session goes.
 
+## The possibility index
+
+The cue index is the effect-size-weighted share of literature cues that moved in the
+lie-associated direction, against the person's own baseline, shrunk toward 50 when few cues
+could be measured or the window is short. It is not a probability. The cues it aggregates are
+the ones meta-analyses found weak (d mostly under 0.3), and people using all of them reach
+about 54% accuracy (Bond & DePaulo 2006). What the index can do: rank this person's answers
+against each other within one session. What it cannot do: say whether any answer was a lie.
+Stress, effort, embarrassment about the topic, humor and the question itself move the same
+cues. A high index on a relevant question is a reason to ask another question, not a finding.
+
 ## Deception-research cues
 
 The cue profile lists literature cues (DePaulo et al. 2003; Sporer & Schwandt 2006; Leal &

@@ -11,6 +11,7 @@ studies, not confirmed microexpressions (those need 100-200 fps and FACS coders)
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -30,6 +31,10 @@ class Prototype:
     absent: tuple[str, ...] = ()
     """AU columns that must stay low (probability < ABSENT_MAX) for the pattern to count."""
     note: str = ""
+    extra: tuple[tuple[str, str, float], ...] = ()
+    """Non-AU conditions (signal, "<" or ">", threshold) that must all hold, e.g. gaze down."""
+    valence: str = "neutral"
+    """"negative", "positive" or "neutral": used by the cue layer, never shown as a feeling."""
 
 
 PROTOTYPES: tuple[Prototype, ...] = (
@@ -49,11 +54,42 @@ PROTOTYPES: tuple[Prototype, ...] = (
         note="brow raise without eye widening or jaw drop: conversational emphasis, greeting",
     ),
     Prototype("surprise", ("au.AU1", "au.AU2", "au.AU5", "au.AU26")),
-    Prototype("fear", ("au.AU1", "au.AU2", "au.AU4", "au.AU5", "au.AU7", "au.AU20", "au.AU26")),
-    Prototype("anger", ("au.AU4", "au.AU5", "au.AU7", "au.AU23")),
-    Prototype("sadness", ("au.AU1", "au.AU4", "au.AU15")),
-    Prototype("disgust", ("au.AU9", "au.AU15")),
-    Prototype("contempt", (), (("au.AUL12", "au.AUR12"), ("au.AUL14", "au.AUR14"))),
+    Prototype(
+        "fear",
+        ("au.AU1", "au.AU2", "au.AU4", "au.AU5", "au.AU7", "au.AU20", "au.AU26"),
+        valence="negative",
+    ),
+    Prototype("anger", ("au.AU4", "au.AU5", "au.AU7", "au.AU23"), valence="negative"),
+    Prototype("sadness", ("au.AU1", "au.AU4", "au.AU15"), valence="negative"),
+    Prototype("disgust", ("au.AU9", "au.AU15"), valence="negative"),
+    Prototype(
+        "contempt",
+        (),
+        (("au.AUL12", "au.AUR12"), ("au.AUL14", "au.AUR14")),
+        valence="negative",
+    ),
+    Prototype(
+        "embarrassment",
+        ("au.AU12",),
+        absent=("au.AU6", "au.AU25", "au.AU26"),
+        extra=(("gaze.vertical", "<", -0.35),),
+        note="controlled smile with gaze down (Keltner 1995 display); also shyness, amusement",
+        valence="negative",
+    ),
+    Prototype(
+        "distress",
+        ("au.AU4", "au.AU7", "au.AU10"),
+        absent=("au.AU12",),
+        note="brow lower, lid tighten, upper lip raise: the pain/distress core (Prkachin 1992)",
+        valence="negative",
+    ),
+    Prototype(
+        "tension",
+        ("au.AU7", "au.AU23"),
+        absent=("au.AU12", "au.AU26"),
+        note="lid and lip tightening without smile or jaw drop; effort and nervousness alike",
+        valence="negative",
+    ),
     Prototype("lip press", ("au.AU24",), absent=("au.AU12",), note="lips pressed together"),
     Prototype(
         "brow furrow",
@@ -76,37 +112,62 @@ def pattern_scores(
 ) -> dict[str, npt.NDArray[np.float64]]:
     """Per-frame score in [0, 1] for each prototype; NaN where AUs are missing."""
     out: dict[str, npt.NDArray[np.float64]] = {}
-    for p in PROTOTYPES:
-        if p.required:
-            cols = [signals.get(c) for c in p.required]
-            if any(c is None for c in cols):
-                continue
-            stack = np.vstack([np.asarray(c, dtype=np.float64) for c in cols if c is not None])
-            # geometric-ish combination: all required AUs must be present, weakest matters
-            score = 0.5 * np.nanmean(stack, axis=0) + 0.5 * np.nanmin(stack, axis=0)
-            if p.absent:
-                acols = [signals.get(c) for c in p.absent]
-                if any(c is None for c in acols):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN frames (no face) stay NaN
+        for p in PROTOTYPES:
+            if p.required:
+                cols = [signals.get(c) for c in p.required]
+                if any(c is None for c in cols):
                     continue
-                astack = np.vstack(
-                    [np.asarray(c, dtype=np.float64) for c in acols if c is not None]
-                )
-                # any "absent" AU above ABSENT_MAX cancels the pattern (it is then another one)
-                score = np.where(np.nanmax(astack, axis=0) < ABSENT_MAX, score, 0.0)
-        else:
-            diffs = []
-            for left, right in p.unilateral:
-                left_v, right_v = signals.get(left), signals.get(right)
-                if left_v is None or right_v is None:
+                stack = np.vstack([np.asarray(c, dtype=np.float64) for c in cols if c is not None])
+                # geometric-ish combination: all required AUs must be present, weakest matters
+                score = 0.5 * np.nanmean(stack, axis=0) + 0.5 * np.nanmin(stack, axis=0)
+                if p.absent:
+                    acols = [signals.get(c) for c in p.absent]
+                    if any(c is None for c in acols):
+                        continue
+                    astack = np.vstack(
+                        [np.asarray(c, dtype=np.float64) for c in acols if c is not None]
+                    )
+                    # any "absent" AU above ABSENT_MAX cancels the pattern (it is then another one)
+                    score = np.where(np.nanmax(astack, axis=0) < ABSENT_MAX, score, 0.0)
+                for sig, op, thr in p.extra:
+                    col = signals.get(sig)
+                    if col is None:
+                        score = np.full_like(score, np.nan)
+                        break
+                    arr = np.asarray(col, dtype=np.float64)
+                    hold = arr < thr if op == "<" else arr > thr
+                    score = np.where(hold & np.isfinite(arr), score, 0.0)
+            else:
+                diffs = []
+                for left, right in p.unilateral:
+                    left_v, right_v = signals.get(left), signals.get(right)
+                    if left_v is None or right_v is None:
+                        continue
+                    diffs.append(
+                        np.abs(np.asarray(left_v, dtype=float) - np.asarray(right_v, dtype=float))
+                    )
+                if not diffs:
                     continue
-                diffs.append(
-                    np.abs(np.asarray(left_v, dtype=float) - np.asarray(right_v, dtype=float))
-                )
-            if not diffs:
-                continue
-            score = np.nanmax(np.vstack(diffs), axis=0) / UNILATERAL_ENTER * PATTERN_ENTER
-        out[p.name] = np.clip(np.where(np.isfinite(score), score, np.nan), 0.0, 1.0)[:n]
+                score = np.nanmax(np.vstack(diffs), axis=0) / UNILATERAL_ENTER * PATTERN_ENTER
+            out[p.name] = np.clip(np.where(np.isfinite(score), score, np.nan), 0.0, 1.0)[:n]
     return out
+
+
+FLOOR_MARGIN = 0.15
+ENTER_CAP = 0.85
+
+
+def personal_thresholds(calibration_scores: npt.NDArray[np.floating]) -> tuple[float, float]:
+    """(enter, exit) raised above this person's resting pattern level (p90 of calibration)."""
+    vals = np.asarray(calibration_scores, dtype=float)
+    vals = vals[np.isfinite(vals)]
+    if vals.size < 10:
+        return PATTERN_ENTER, PATTERN_EXIT
+    p90 = float(np.percentile(vals, 90))
+    enter = min(ENTER_CAP, max(PATTERN_ENTER, p90 + FLOOR_MARGIN))
+    return enter, enter - (PATTERN_ENTER - PATTERN_EXIT)
 
 
 def _au_list(p: Prototype) -> str:
@@ -128,7 +189,10 @@ def detect_expression_patterns(
     baseline_quality: float,
     id_start: int = 600_000,
     min_quality: float = 0.4,
+    calibration_end_us: int | None = None,
 ) -> list[Event]:
+    """``calibration_end_us``: frames before it define each pattern's resting level for this
+    person; the entry threshold rises above a face that rests near a prototype."""
     n = t_us.shape[0]
     period = median_frame_period_us(t_us)
     ok = np.asarray(quality >= min_quality, dtype=np.bool_)
@@ -136,9 +200,13 @@ def detect_expression_patterns(
     events: list[Event] = []
     k = id_start
     proto_by_name = {p.name: p for p in PROTOTYPES}
+    calib = (np.asarray(t_us) < calibration_end_us) & ok if calibration_end_us else None
     for name, score in scores.items():
         p = proto_by_name[name]
-        segs = hysteresis_segments(score, ok, enter=PATTERN_ENTER, exit_=PATTERN_EXIT)
+        enter, exit_ = PATTERN_ENTER, PATTERN_EXIT
+        if calib is not None and calib.sum() >= 10:
+            enter, exit_ = personal_thresholds(score[calib])
+        segs = hysteresis_segments(score, ok, enter=enter, exit_=exit_)
         for s in segs:
             start = int(t_us[s.start_idx])
             end = segment_end_us(t_us, s.end_idx, period)
@@ -187,7 +255,9 @@ def detect_expression_patterns(
                     quality=q,
                     baseline_quality=baseline_quality,
                     extractor_id=extractor_id,
-                    tags=["expression", name] + (["brief"] if brief else []),
+                    tags=["expression", name]
+                    + (["brief"] if brief else [])
+                    + ([p.valence] if p.valence != "neutral" else []),
                 )
             )
             k += 1
@@ -215,20 +285,43 @@ class StreamingExpressionDetector:
         self.min_quality = min_quality
         self._k = id_start
         self._open: dict[str, tuple[int, int, float, dict[str, float], list[float]]] = {}
+        self._calib: dict[str, list[float]] = {}
+        self.thresholds: dict[str, tuple[float, float]] = {}
+        """Per-pattern (enter, exit) after ``finish_learning``; defaults otherwise."""
+
+    @staticmethod
+    def _scores(values: dict[str, float]) -> dict[str, npt.NDArray[np.float64]]:
+        arrs = {
+            k: np.array([v]) for k, v in values.items() if k.startswith(("au.", "gaze.", "head."))
+        }
+        return pattern_scores(arrs, 1) if arrs else {}
+
+    def learn(self, quality: float, values: dict[str, float]) -> None:
+        """Feed calibration frames to learn this person's resting level per pattern."""
+        if quality < self.min_quality:
+            return
+        for name, sc in self._scores(values).items():
+            if sc.size and np.isfinite(sc[0]):
+                self._calib.setdefault(name, []).append(float(sc[0]))
+
+    def finish_learning(self) -> None:
+        for name, vals in self._calib.items():
+            self.thresholds[name] = personal_thresholds(np.asarray(vals))
+        self._calib.clear()
 
     def update(self, t_us: int, quality: float, values: dict[str, float]) -> list[Event]:
         out: list[Event] = []
-        arrs = {k: np.array([v]) for k, v in values.items() if k.startswith("au.")}
-        scores = pattern_scores(arrs, 1) if arrs else {}
+        scores = self._scores(values)
         for p in PROTOTYPES:
             sc = scores.get(p.name)
             s = float(sc[0]) if sc is not None and sc.size else float("nan")
             valid = quality >= self.min_quality and np.isfinite(s)
+            enter, exit_ = self.thresholds.get(p.name, (PATTERN_ENTER, PATTERN_EXIT))
             run = self._open.get(p.name)
             if run is None:
-                if valid and s >= PATTERN_ENTER:
+                if valid and s >= enter:
                     self._open[p.name] = (t_us, t_us, s, dict(values), [quality])
-            elif not valid or s < PATTERN_EXIT:
+            elif not valid or s < exit_:
                 out += self._close(p, run, t_us)
                 del self._open[p.name]
             else:
@@ -293,6 +386,8 @@ class StreamingExpressionDetector:
                 quality=q,
                 baseline_quality=self.baseline_quality,
                 extractor_id=self.extractor_id,
-                tags=["expression", p.name] + (["brief"] if brief else []),
+                tags=["expression", p.name]
+                + (["brief"] if brief else [])
+                + ([p.valence] if p.valence != "neutral" else []),
             )
         ]

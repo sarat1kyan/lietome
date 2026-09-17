@@ -201,13 +201,18 @@ def build_narrative(
 
 
 def cues_narrative(cues: dict[str, Any] | None) -> list[str]:
-    if not cues:
+    if not cues or not cues.get("evaluated"):
         return []
-    present = [c["name"] for c in cues.get("cues", []) if c.get("present")]
-    txt = f"Deception-research cue check for the session: {cues.get('summary', '')}."
-    if present:
-        txt += " Present: " + ", ".join(present) + "."
-    return [txt, cues.get("caveat", "")]
+    present = [c["name"] for c in cues["cues"] if c["present"]]
+    listed = f": {', '.join(present)}" if present else ""
+    lines = [
+        f"Deception-research cues over the session: {cues['summary']}{listed}. "
+        "Effect sizes in the literature are small; this is a checklist, not a probability."
+    ]
+    idx = cues.get("index")
+    if idx and idx.get("value") is not None:
+        lines.append(idx["text"])
+    return lines
 
 
 def protocol_narrative(protocol: Any) -> list[str]:
@@ -246,9 +251,18 @@ def protocol_narrative(protocol: Any) -> list[str]:
             "Experimental, one person, one session; not evidence of lie detection."
         )
     lines.extend(
-        f"Q{q['id'].lstrip('q')}: {q['cues']['summary']}."
+        f"Q{q['id'].lstrip('q')}: {q['cues']['summary']}"
+        + (
+            f"; cue index {q['cue_index']['value']:.0f} ({q['cue_index']['band']})"
+            if q.get("cue_index") and q["cue_index"].get("value") is not None
+            else ""
+        )
+        + "."
         for q in qs
         if q.get("cues") and q["cues"].get("present")
     )
+    poss = d.get("possibility")
+    if poss and poss.get("text"):
+        lines.append(poss["text"])
     lines.extend(f"Note: {n}." for n in d.get("notes", []))
     return lines

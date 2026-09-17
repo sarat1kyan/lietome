@@ -12,7 +12,7 @@ import json
 import math
 import secrets
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,6 +49,7 @@ from lightman.features.rppg import estimate_pulse, pulse_events, skin_means
 from lightman.features.smoothing import median_smooth
 from lightman.features.table import AU_COLUMNS, SIGNAL_COLUMNS, FeatureTableBuilder
 from lightman.interpretation.cues import cue_profile
+from lightman.interpretation.expressions import detect_expression_patterns
 from lightman.interpretation.novelty import detect_au_novelty
 from lightman.live.streaming import tag_speaking
 from lightman.media import MediaLimits, iter_video_frames, probe_media, sha256_file
@@ -168,6 +169,21 @@ def extract_frames_at(
         if i >= len(targets):
             break
     return out
+
+
+def _state_cs(
+    baselines: Mapping[str, BaselineSnapshot],
+) -> dict[str, dict[str, tuple[float, float]]]:
+    """state -> signal -> (center, scale) for the cue layer, 'all' excluded."""
+    return {
+        state: {
+            name: (sb.center, sb.scale)
+            for name, sb in snap.signals.items()
+            if math.isfinite(sb.center) and math.isfinite(sb.scale) and sb.scale > 0
+        }
+        for state, snap in baselines.items()
+        if state != STATE_ALL
+    }
 
 
 def _save_thumbnail(
@@ -453,6 +469,17 @@ def analyze_video(
             id_start=850_000,
             min_ms=cfg.gaze.min_ms,
         )
+    if au_detector is not None:
+        extra += detect_expression_patterns(
+            t_us=t_us,
+            quality=quality,
+            signals=signals,
+            subject_id=subject_id,
+            extractor_id=prov.extractor_id,
+            baseline_quality=baseline.quality,
+            id_start=600_000,
+            calibration_end_us=baseline.window_end_us,
+        )
     if cfg.novelty.enabled and au_detector is not None:
         extra += detect_au_novelty(
             t_us=t_us,
@@ -600,6 +627,9 @@ def analyze_video(
         reference_blink_rate=ref_n or None,
         response_latency_ms=None,
         control_latency_ms=None,
+        events=events,
+        state_baselines=_state_cs(state_baselines),
+        frame_state=frame_state,
     )
     summary["narrative"] = build_narrative(
         duration_us=summary["duration_us"],

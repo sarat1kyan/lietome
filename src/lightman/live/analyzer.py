@@ -151,7 +151,16 @@ class LiveAnalyzer:
         self.markers: list[Marker] = []
         self.audio_stream: Any = None
         """StreamingAudioAnalyzer attached by the WebSocket endpoint (optional)."""
-        self.expressions: StreamingExpressionDetector | None = None
+        self.expressions: StreamingExpressionDetector | None = (
+            StreamingExpressionDetector(
+                subject_id=subject_id,
+                extractor_id=landmarker.provenance.extractor_id,
+                baseline_quality=1.0,
+                frame_period_us=self.period_us,
+            )
+            if au_detector is not None
+            else None
+        )
         self._prev_head: tuple[float, float, float] | None = None
         self._prev_t_us: int | None = None
         self.pulse = (
@@ -304,6 +313,8 @@ class LiveAnalyzer:
         if not self.baseline.ready:
             if self.novelty is not None:
                 self.novelty.update(t_us, quality, values)  # learning the familiar combinations
+            if self.expressions is not None:
+                self.expressions.learn(quality, values)  # resting level per pattern
             if self.baseline.update(t_us, quality, values, speaking=speaking):
                 self._arm_detectors()
                 self.baseline_just_ready = True
@@ -425,12 +436,10 @@ class LiveAnalyzer:
             state_baselines=self.baseline.state_snapshots,
             center_scale=self.adaptive.center_scale if self.adaptive else None,
         )
-        self.expressions = StreamingExpressionDetector(
-            subject_id=self.subject_id,
-            extractor_id=ext,
-            baseline_quality=snap.quality,
-            frame_period_us=self.period_us,
-        )
+        if self.expressions is not None:
+            self.expressions.baseline_quality = snap.quality
+            self.expressions.period_us = self.period_us
+            self.expressions.finish_learning()
         if self.cfg.gestures.enabled:
             self.gestures = StreamingHeadGestures(
                 subject_id=self.subject_id,
@@ -466,6 +475,126 @@ class LiveAnalyzer:
 
     def add_marker(self, marker: Marker) -> None:
         self.markers.append(marker)
+
+    def _state_inputs(
+        self, cols: dict[str, Any]
+    ) -> tuple[dict[str, dict[str, tuple[float, float]]] | None, npt.NDArray[np.str_] | None]:
+        """(state -> signal -> (center, scale), per-frame state) for the cue layer."""
+        states = self.baseline.state_snapshots
+        if not states or "speaking" not in cols:
+            return None, None
+        cs = {
+            st: {
+                name: (sb.center, sb.scale)
+                for name, sb in snap.signals.items()
+                if math.isfinite(sb.center) and math.isfinite(sb.scale) and sb.scale > 0
+            }
+            for st, snap in states.items()
+        }
+        spk = cols["speaking"].astype(bool)
+        return cs, np.where(spk, STATE_SPEAKING, STATE_SILENT).astype(str)
+
+    def question_summary(self, end_us: int) -> dict[str, Any] | None:
+        """Cue profile and index for the most recent question, compared with the control
+        questions answered so far. Called when an answer ends; used by the live UI."""
+        snap = self.baseline.snapshot
+        qs = [m for m in self.markers if m.kind == "question"]
+        if snap is None or not qs:
+            return None
+        q = qs[-1]
+        if end_us <= q.t_us + 500_000:
+            return None
+        cols = self.builder.to_numpy()
+        t = cols["t_us"].astype(np.int64)
+        sig = {k: cols[k].astype(np.float64) for k in snap.signals if k in cols}
+        center = {k: v.center for k, v in snap.signals.items()}
+        scale = {k: v.scale for k, v in snap.signals.items()}
+        blinks = [e.start_us for e in self.events if e.event_type == "blink"]
+        ref_end = snap.window_end_us + 60_000_000
+        ref_n = sum(1 for b in blinks if snap.window_end_us <= b < ref_end)
+        f0z = self.audio_stream.f0_z() if self.audio_stream is not None else None
+        speaking = cols["speaking"].astype(bool) if self.has_audio else None
+        state_cs, frame_state = self._state_inputs(cols)
+
+        def latency(a: int, b: int) -> float | None:
+            if speaking is None:
+                return None
+            m = (t >= a + 150_000) & (t < b) & speaking
+            idx = np.flatnonzero(m)
+            return float((t[idx[0]] - a) / 1000) if idx.size else None
+
+        def window_end(i: int) -> int:
+            nxt = qs[i + 1].t_us if i + 1 < len(qs) else end_us
+            ends = [m.t_us for m in self.markers if m.kind == "end" and qs[i].t_us < m.t_us <= nxt]
+            return ends[0] if ends else nxt
+
+        ctrl_lat = [
+            lat
+            for i, m in enumerate(qs[:-1])
+            if m.category == "control"
+            for lat in [latency(m.t_us, window_end(i))]
+            if lat is not None
+        ]
+        lat_q = latency(q.t_us, end_us)
+        prof = cue_profile(
+            window=(q.t_us, end_us),
+            t_us=t,
+            signals=sig,
+            baseline_center=center,
+            baseline_scale=scale,
+            voice_f0_z=f0z,
+            blink_times_us=blinks,
+            reference_blink_rate=ref_n or None,
+            response_latency_ms=lat_q,
+            control_latency_ms=float(np.mean(ctrl_lat)) if ctrl_lat else None,
+            events=self.events,
+            state_baselines=state_cs,
+            frame_state=frame_state,
+        )
+        ctrl_idx = []
+        for i, m in enumerate(qs[:-1]):
+            if m.category != "control":
+                continue
+            p = cue_profile(
+                window=(m.t_us, window_end(i)),
+                t_us=t,
+                signals=sig,
+                baseline_center=center,
+                baseline_scale=scale,
+                voice_f0_z=f0z,
+                blink_times_us=blinks,
+                reference_blink_rate=ref_n or None,
+                response_latency_ms=None,
+                control_latency_ms=None,
+                events=self.events,
+                state_baselines=state_cs,
+                frame_state=frame_state,
+            )
+            if p["index"].get("value") is not None:
+                ctrl_idx.append(p["index"]["value"])
+        in_win = [e for e in self.events if e.start_us < end_us and e.end_us > q.t_us]
+        out: dict[str, Any] = _nan_to_none(
+            {
+                "type": "question_summary",
+                "id": q.id,
+                "text": q.text,
+                "category": q.category,
+                "start_us": q.t_us,
+                "end_us": end_us,
+                "response_latency_ms": lat_q,
+                "deviations": sum(1 for e in in_win if e.event_type == "baseline_deviation"),
+                "episodes": sum(1 for e in in_win if e.event_type == "episode"),
+                "expression_patterns": [
+                    e.label.replace("expression pattern: ", "")
+                    for e in in_win
+                    if e.event_type == "expression_pattern"
+                ][:8],
+                "cues": prof,
+                "index": prof["index"],
+                "control_mean_index": (round(float(np.mean(ctrl_idx)), 1) if ctrl_idx else None),
+            }
+        )
+        return out
 
     def baseline_view(self, signals: list[str]) -> dict[str, dict[str, float]]:
         """Current (adaptive when available) center/scale per signal for the 'all' state."""
@@ -658,12 +787,15 @@ class LiveAnalyzer:
         ref_blinks = [e.start_us for e in self.events if e.event_type == "blink"]
         ref_end = snap.window_end_us + 60_000_000
         ref_n = sum(1 for b in ref_blinks if snap.window_end_us <= b < ref_end)
+        state_cs, frame_state = self._state_inputs(cols)
         cue_inputs: dict[str, Any] = {
             "signals": sig_cols,
             "baseline_center": {k: v.center for k, v in snap.signals.items()},
             "baseline_scale": {k: v.scale for k, v in snap.signals.items()},
             "reference_blink_rate": ref_n or None,
             "session_start_us": snap.window_end_us,
+            "state_baselines": state_cs,
+            "frame_state": frame_state,
         }
         analysis["session_cues"] = cue_profile(
             window=(snap.window_end_us, analysis["duration_us"]),
@@ -676,6 +808,9 @@ class LiveAnalyzer:
             reference_blink_rate=ref_n or None,
             response_latency_ms=None,
             control_latency_ms=None,
+            events=self.events,
+            state_baselines=state_cs,
+            frame_state=frame_state,
         )
         if self.markers:
             protocol = summarize_protocol(

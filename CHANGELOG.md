@@ -5,6 +5,12 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 ## [Unreleased]
 
 ### Added
+- Possibility-of-deception cue index per session, per question and per live answer, with
+  drivers, counters, reliability and caveat; relevant-vs-control possibility text (ADR-021).
+- New cues: negative-affect pattern, brief pattern, facial tension.
+- Expression prototypes: embarrassment, distress, tension; valence tags; personal entry
+  thresholds from the calibration resting level. Offline pipeline now detects patterns.
+- Live question_summary message after each answer; gauge in the live panel and HUD.
 - Gaze-away episodes (gaze_away events) offline and live, with a running counter on the HUD.
 - Live speech-rate proxy (voice.rate_syl_s) in the audio baseline, events and table.
 - Span comparison: GET /api/sessions/{id}/compare, compare mode on the timeline (drag A then B,
