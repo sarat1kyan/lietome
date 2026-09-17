@@ -15,13 +15,15 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from lightman.audio.features import FRAME_LENGTH, HOP, RATE, SILENCE_DB
+from lightman.audio.features import FRAME_LENGTH, HOP, RATE, SILENCE_DB, syllable_nuclei_count
 from lightman.audio.vad import CHUNK, CONTEXT, SileroVAD
 from lightman.config import LightmanConfig
 from lightman.live.streaming import StreamingBaseline, StreamingDeviationDetector
 from lightman.schema import Event
 
 VOICED_ENERGY_FLOOR_DB = -50.0
+RATE_WINDOW_HOPS = 100  # 2 s of 20 ms hops for the speech-rate proxy
+RATE_MIN_SPEECH_FRACTION = 0.6
 
 
 @dataclass(slots=True)
@@ -33,6 +35,7 @@ class AudioFrameResult:
     voiced: bool
     new_events: list[Event]
     baseline_ready: bool
+    rate_syl_s: float | None = None
 
 
 class StreamingAudioAnalyzer:
@@ -52,12 +55,16 @@ class StreamingAudioAnalyzer:
         self._sr = np.array(RATE, dtype=np.int64)
         self._speech_prob = 0.0
         self._vad_pos = 0  # samples fed to VAD
-        self.baseline = StreamingBaseline(cfg.baseline, ["voice.f0_hz", "voice.energy_db"])
+        self.baseline = StreamingBaseline(
+            cfg.baseline, ["voice.f0_hz", "voice.energy_db", "voice.rate_syl_s"]
+        )
+        self._energy_hist: list[float] = []
+        self._speech_hist: list[bool] = []
         self.detector: StreamingDeviationDetector | None = None
         self.events: list[Event] = []
         self._id_start = id_start
         self._warmup_us = cfg.events.warmup_ms * 1000
-        self.hops: list[tuple[int, float, float, float, bool]] = []
+        self.hops: list[tuple[int, float, float, float, bool, float]] = []
         """(t_us, speech_prob, f0_hz or nan, energy_db, voiced) per 20 ms hop."""
 
     def push(self, pcm: npt.NDArray[np.float32], t_us: int) -> list[AudioFrameResult]:
@@ -96,9 +103,22 @@ class StreamingAudioAnalyzer:
                 voiced = periodic
                 if not voiced:
                     f0 = None
+            speaking_hop = self._speech_prob >= self.cfg.audio.vad_threshold
+            self._energy_hist.append(energy)
+            self._speech_hist.append(speaking_hop)
+            if len(self._energy_hist) > RATE_WINDOW_HOPS:
+                self._energy_hist.pop(0)
+                self._speech_hist.pop(0)
+            rate: float | None = None
+            if len(self._speech_hist) == RATE_WINDOW_HOPS:
+                frac = sum(self._speech_hist) / RATE_WINDOW_HOPS
+                if frac >= RATE_MIN_SPEECH_FRACTION:
+                    speech_s = frac * RATE_WINDOW_HOPS * HOP / RATE
+                    rate = syllable_nuclei_count(np.asarray(self._energy_hist)) / speech_s
             values = {
                 "voice.f0_hz": f0 if f0 is not None else math.nan,
                 "voice.energy_db": energy,
+                "voice.rate_syl_s": rate if rate is not None else math.nan,
             }
             quality = 1.0 if voiced else 0.0
             new_events: list[Event] = []
@@ -127,7 +147,14 @@ class StreamingAudioAnalyzer:
                 ]
                 self.events.extend(new_events)
             self.hops.append(
-                (center_us, self._speech_prob, f0 if f0 is not None else math.nan, energy, voiced)
+                (
+                    center_us,
+                    self._speech_prob,
+                    f0 if f0 is not None else math.nan,
+                    energy,
+                    voiced,
+                    rate if rate is not None else math.nan,
+                )
             )
             out.append(
                 AudioFrameResult(
@@ -138,6 +165,7 @@ class StreamingAudioAnalyzer:
                     voiced=voiced,
                     new_events=new_events,
                     baseline_ready=self.baseline.ready,
+                    rate_syl_s=rate,
                 )
             )
             self._buf = self._buf[HOP:]

@@ -31,6 +31,7 @@ from lightman.core.errors import LightmanError, UnsupportedMediaError
 from lightman.core.logging import get_logger
 from lightman.core.timebase import utc_now_iso
 from lightman.events import cluster_cooccurring, detect_blinks, detect_deviation_events
+from lightman.events.gaze import detect_gaze_away
 from lightman.events.gestures import detect_head_gestures
 from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
@@ -438,6 +439,19 @@ def analyze_video(
             id_start=700_000,
             nod_min_deg=cfg.gestures.nod_min_deg,
             shake_min_deg=cfg.gestures.shake_min_deg,
+        )
+    if cfg.gaze.enabled:
+        extra += detect_gaze_away(
+            t_us=t_us,
+            quality=quality,
+            gaze_h=signals["gaze.horizontal"],
+            gaze_v=signals["gaze.vertical"],
+            yaw_deg=signals["head.yaw_deg"],
+            subject_id=subject_id,
+            extractor_id=prov.extractor_id,
+            baseline_quality=baseline.quality,
+            id_start=850_000,
+            min_ms=cfg.gaze.min_ms,
         )
     if cfg.novelty.enabled and au_detector is not None:
         extra += detect_au_novelty(

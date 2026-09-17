@@ -99,6 +99,10 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   exclusion AUs (social smile, brow flash, lip press, brow furrow), per-signal thresholds and
   minimum durations, live voice table + pitch cue, frame readout and live overlays. Replay
   404 -> 268 deviations (167 -> 111/min).
+* ADR-020: gaze-away episodes, live speech rate, span comparison endpoint + compare mode,
+  on-video HUD (mesh contours, status, question card, tape, pulse waveform, ticker), stats
+  row and change-density strip. Session 5 replay: 7 gaze-away episodes in 3.1 min (gaze
+  proxy p90 0.44, so the 0.45 entry sits at the tail; 1 s minimum removes glances).
 * ADR-019: camera pulse estimate (rPPG POS, SNR-gated, pulse lane + HUD), head nods/shakes
   (session 5: 5 nods), unfamiliar AU pairings (whole-set version gave 30 noisy events; pairs
   over 13 watched AUs instead), key-moments strip with live thumbnails. Not yet validated

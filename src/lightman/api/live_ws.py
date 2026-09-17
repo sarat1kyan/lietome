@@ -223,6 +223,14 @@ async def live_endpoint(
                                     if res.pulse is not None
                                     else None
                                 ),
+                                "pulse_wave": (
+                                    analyzer.pulse.wave() if analyzer.pulse is not None else None
+                                ),
+                                "gaze_away_since_us": (
+                                    analyzer.gaze.active_since_us
+                                    if analyzer.gaze is not None
+                                    else None
+                                ),
                                 "stats": analyzer.stats.summary(),
                             }
                         )
@@ -277,6 +285,11 @@ async def live_endpoint(
                                     "f0_hz": last.f0_hz,
                                     "energy_db": round(last.energy_db, 1),
                                     "voiced": last.voiced,
+                                    "rate_syl_s": (
+                                        round(last.rate_syl_s, 2)
+                                        if last.rate_syl_s is not None
+                                        else None
+                                    ),
                                     "baseline_ready": last.baseline_ready,
                                 }
                             )

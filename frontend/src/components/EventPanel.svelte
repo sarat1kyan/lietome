@@ -4,7 +4,7 @@
   import { explain } from '../lib/explain'
   let { selected, events, session, baseline, onpick }: { selected: LmEvent | null; events: LmEvent[]; session: SessionSummary | null; baseline: Baseline | null; onpick: (e: LmEvent) => void } = $props()
   let filter = $state<'episodes' | 'expressions' | 'gestures' | 'pulse' | 'all' | 'video' | 'audio' | 'speaking'>('episodes')
-  const GESTURE_TYPES = ['head_gesture', 'eye_closure', 'blink_rate_change']
+  const GESTURE_TYPES = ['head_gesture', 'eye_closure', 'blink_rate_change', 'gaze_away']
   const PULSE_TYPES = ['pulse_change', 'au_novelty']
   const hasEpisodes = $derived(events.some((e) => e.event_type === 'episode' || e.event_type === 'multi_signal_deviation'))
   const listed = $derived(
@@ -81,7 +81,7 @@
     <ul>
       {#each listed as e (e.event_id)}
         <li>
-          <button class="ev" class:sel={selected?.event_id === e.event_id} class:audio={e.source === 'audio'} class:expr={e.event_type === 'expression_pattern' || e.event_type === 'au_novelty'} class:pulse={e.event_type === 'pulse_change'} class:gesture={e.event_type === 'head_gesture'} onclick={() => onpick(e)}>
+          <button class="ev" class:sel={selected?.event_id === e.event_id} class:audio={e.source === 'audio'} class:expr={e.event_type === 'expression_pattern' || e.event_type === 'au_novelty'} class:pulse={e.event_type === 'pulse_change'} class:gesture={e.event_type === 'head_gesture' || e.event_type === 'gaze_away'} onclick={() => onpick(e)}>
             <span class="sev mono">{sev(e.severity)}</span>
             <span class="lbl">{e.label}{#if e.tags.includes('speaking')} <em class="tag">speaking</em>{/if}</span>
             <span class="t mono muted">{tc(e.start_us).slice(3)}</span>

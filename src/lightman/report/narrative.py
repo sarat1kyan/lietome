@@ -40,6 +40,8 @@ def _human_signal(name: str) -> str:
         "asym.mouth_smile": "smile asymmetry",
         "voice.f0_hz": "voice pitch",
         "voice.energy_db": "voice loudness",
+        "voice.rate_syl_s": "speech rate",
+        "gaze.magnitude": "gaze off camera",
         "eye.aspect_ratio_mean": "eye openness",
     }.get(name, name)
 
@@ -154,6 +156,16 @@ def build_narrative(
         lines.append(
             f"Head gestures: {nods} nods and {shakes} shakes. They mark rhythm, listening, "
             "agreement or disagreement; the movement alone does not say which."
+        )
+    away = [e for e in events if e.event_type == "gaze_away"]
+    if away:
+        total_s = sum((e.end_us - e.start_us) / 1e6 for e in away)
+        longest = max(away, key=lambda e: e.end_us - e.start_us)
+        lines.append(
+            f"Gaze left the camera {len(away)} times for a second or more ({total_s:.0f} s in "
+            f"total; longest {(longest.end_us - longest.start_us) / 1e6:.1f} s at "
+            f"{format_timecode(longest.start_us)}). Looking away while thinking or listening is "
+            "ordinary; the timing relative to questions is what can be compared."
         )
     novel = [e for e in events if e.event_type == "au_novelty"]
     if novel:

@@ -70,7 +70,9 @@ class AudioConfig(BaseModel):
     min_event_ms: int = Field(
         default=250, ge=0, description="Minimum duration of a voice deviation event"
     )
-    signals: list[str] = Field(default_factory=lambda: ["voice.f0_hz", "voice.energy_db"])
+    signals: list[str] = Field(
+        default_factory=lambda: ["voice.f0_hz", "voice.energy_db", "voice.rate_syl_s"]
+    )
 
 
 class AdaptiveBaselineConfig(BaseModel):
@@ -217,6 +219,15 @@ class NoveltyConfig(BaseModel):
     min_ms: int = Field(default=300, ge=0)
 
 
+class GazeConfig(BaseModel):
+    """Sustained gaze-away episodes from the eye-look proxy and head yaw."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    min_ms: int = Field(default=1000, ge=100, description="Shorter glances are not reported")
+
+
 class StorageConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -253,6 +264,7 @@ class LightmanConfig(BaseModel):
     pulse: PulseConfig = PulseConfig()
     gestures: GesturesConfig = GesturesConfig()
     novelty: NoveltyConfig = NoveltyConfig()
+    gaze: GazeConfig = GazeConfig()
     storage: StorageConfig = StorageConfig()
     privacy: PrivacyConfig = PrivacyConfig()
     models: ModelsConfig = ModelsConfig()

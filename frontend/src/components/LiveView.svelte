@@ -4,7 +4,7 @@
   import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg } from '../lib/live'
   import { CALIBRATION_SECONDS, PASSAGE, phaseAt } from '../lib/calibration'
   import { DEFAULT_SCRIPT, parseScript, type ScriptQuestion } from '../lib/protocol'
-  import { auName, patternScores, PATTERN_ENTER } from '../lib/facs'
+  import { drawHud, type Flash } from '../lib/hud'
   import type { LmEvent } from '../lib/types'
 
   let { ondone }: { ondone: (sessionId: string) => void } = $props()
@@ -19,12 +19,11 @@
   let state = $state<'idle' | 'connecting' | 'running' | 'stopped' | 'error'>('idle')
   let detail = $state<string>('')
   let last = $state<LiveFrameMsg | null>(null)
-  let audioLast = $state<{ speech_prob: number; f0_hz: number | null; energy_db: number; voiced: boolean } | null>(null)
+  let audioLast = $state<{ speech_prob: number; f0_hz: number | null; energy_db: number; voiced: boolean; rate_syl_s?: number | null } | null>(null)
   let events = $state<LmEvent[]>([])
   let session: LiveSession | null = null
   let sessionId = $state<string | null>(null)
   let showAll = $state(false)
-  let readoutGaze = $derived(last && last.values['gaze.horizontal'] != null ? (Math.abs(last.values['gaze.horizontal']) < 0.15 ? 'gaze center' : last.values['gaze.horizontal'] > 0 ? 'gaze left' : 'gaze right') : '')
   let calib = $state<{ name: string; instruction: string; remaining: number; speaking: boolean } | null>(null)
   let baselineInfo = $state<LiveBaselineMsg | null>(null)
   let lastPhaseSpeaking: boolean | null = null
@@ -34,11 +33,12 @@
   const WINDOW_US = 60e6
   const LANES = ['head.yaw_deg', 'head.speed_deg_s', 'gaze.horizontal', 'blendshape.browInnerUp', 'blendshape.jawOpen', 'asym.mouth_smile', 'au.AU4', 'au.AU12', 'voice.f0_hz', 'voice.energy_db']
   let laneBase = $state<Record<string, { center: number; scale: number }>>({})
-  let flashes: { text: string; until: number; color: string }[] = []
-  const FLASH_TYPES = new Set(['episode', 'expression_pattern', 'blink_rate_change', 'head_gesture', 'au_novelty', 'pulse_change'])
+  let flashes: Flash[] = []
+  let ticker = $state<string | null>(null)
+  const FLASH_TYPES = new Set(['episode', 'expression_pattern', 'blink_rate_change', 'head_gesture', 'au_novelty', 'pulse_change', 'gaze_away'])
   let pulseHold = $state<{ bpm: number; snr_db: number; usable: boolean } | null>(null)
   let tally = $state<Record<string, number>>({})
-  const TALLY = [['episode', 'episodes'], ['expression_pattern', 'patterns'], ['head_gesture', 'gestures'], ['au_novelty', 'pairings'], ['voice', 'voice'], ['pulse_change', 'pulse'], ['blink', 'blinks']] as const
+  const TALLY = [['episode', 'episodes'], ['expression_pattern', 'patterns'], ['head_gesture', 'gestures'], ['gaze_away', 'gaze away'], ['au_novelty', 'pairings'], ['voice', 'voice'], ['pulse_change', 'pulse'], ['blink', 'blinks']] as const
   let lastBlinkAt = 0
   let showOverlay = $state(true)
   let showProtocol = $state(false)
@@ -112,8 +112,9 @@
         const tk = e.source === 'audio' ? 'voice' : e.event_type
         tally[tk] = (tally[tk] ?? 0) + 1
         if (e.event_type === 'blink') { lastBlinkAt = now; continue }
+        if (FLASH_TYPES.has(e.event_type) || e.source === 'audio') ticker = e.label
         if (FLASH_TYPES.has(e.event_type) || e.source === 'audio')
-          flashes = [{ text: e.label.replace('expression pattern: ', '').replace('new AU pairing: ', 'new: '), until: now + 2500, color: e.event_type === 'expression_pattern' || e.event_type === 'au_novelty' ? '#b48ce6' : e.event_type === 'head_gesture' ? '#7fb4e8' : e.event_type === 'pulse_change' ? '#e0907a' : e.source === 'audio' ? '#5fb8ae' : '#d4a24c' }, ...flashes].slice(0, 4)
+          flashes = [{ text: e.label.replace('expression pattern: ', '').replace('new AU pairing: ', 'new: '), until: now + 2500, color: e.event_type === 'expression_pattern' || e.event_type === 'au_novelty' ? '#b48ce6' : e.event_type === 'head_gesture' || e.event_type === 'gaze_away' ? '#7fb4e8' : e.event_type === 'pulse_change' ? '#e0907a' : e.source === 'audio' ? '#5fb8ae' : '#d4a24c' }, ...flashes].slice(0, 4)
       }
       if (currentQ) { const n = m.events.filter((e: LmEvent) => e.event_type === 'baseline_deviation').length; if (n) asked[qIndex] = { ...asked[qIndex], devs: asked[qIndex].devs + n } }
     } else if (m.type === 'baseline') {
@@ -126,6 +127,12 @@
     }
   }
 
+  const TAPE = [
+    { name: 'head.speed_deg_s', label: 'head speed', color: '#7fb4e8' },
+    { name: 'blendshape.jawOpen', label: 'jaw open', color: '#d4a24c' },
+    { name: 'blendshape.browInnerUp', label: 'brow raise', color: '#d4a24c' },
+    { name: 'voice.f0_hz', label: 'voice f0', color: '#5fb8ae' },
+  ]
   function drawOverlay(m: LiveFrameMsg) {
     const c = overlay, v = videoEl
     if (!c || !v || !v.videoWidth) return
@@ -136,93 +143,23 @@
     const ctx = c.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, rect.width, rect.height)
-    // object-fit: contain mapping
     const scale = Math.min(rect.width / v.videoWidth, rect.height / v.videoHeight)
     const dw = v.videoWidth * scale, dh = v.videoHeight * scale
-    const ox = (rect.width - dw) / 2, oy = (rect.height - dh) / 2
-    if (m.landmarks) {
-      ctx.fillStyle = 'rgba(127,180,232,0.75)'
-      for (let i = 0; i < m.landmarks.length; i += 2) ctx.fillRect(ox + m.landmarks[i] * dw - 0.6, oy + m.landmarks[i + 1] * dh - 0.6, 1.2, 1.2)
-    }
-    if (m.bbox) {
-      const [x0, y0, x1, y1] = m.bbox
-      ctx.strokeStyle = m.baseline_ready ? '#d4a24c' : '#7fb4e8'; ctx.lineWidth = 1
-      ctx.strokeRect(ox + x0 * dw, oy + y0 * dh, (x1 - x0) * dw, (y1 - y0) * dh)
-    }
-    if (!showOverlay) return
-    ctx.font = '11px "JetBrains Mono", monospace'; ctx.textBaseline = 'middle'
-    const vals = m.values
-    // head pose axes at face center (yaw/pitch/roll in degrees)
-    if (m.bbox && vals['head.yaw_deg'] != null) {
-      const [x0, y0, x1, y1] = m.bbox
-      const cx = ox + ((x0 + x1) / 2) * dw, cy = oy + ((y0 + y1) / 2) * dh, L = 0.25 * (x1 - x0) * dw
-      const yaw = (vals['head.yaw_deg'] * Math.PI) / 180, pitch = (vals['head.pitch_deg'] * Math.PI) / 180, roll = (vals['head.roll_deg'] * Math.PI) / 180
-      const axis = (x: number, y: number, z: number, color: string) => {
-        // rotate unit axis by roll(z), pitch(x), yaw(y); project ignoring depth
-        let [X, Y, Z] = [x, y, z]
-        ;[Y, Z] = [Y * Math.cos(pitch) - Z * Math.sin(pitch), Y * Math.sin(pitch) + Z * Math.cos(pitch)]
-        ;[X, Z] = [X * Math.cos(yaw) + Z * Math.sin(yaw), -X * Math.sin(yaw) + Z * Math.cos(yaw)]
-        ;[X, Y] = [X * Math.cos(roll) - Y * Math.sin(roll), X * Math.sin(roll) + Y * Math.cos(roll)]
-        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + X * L, cy - Y * L); ctx.stroke()
-      }
-      axis(1, 0, 0, 'rgba(224,107,94,0.9)'); axis(0, 1, 0, 'rgba(99,181,127,0.9)'); axis(0, 0, 1, 'rgba(127,180,232,0.9)')
-      // gaze arrow from between the eyes
-      if (vals['gaze.horizontal'] != null) {
-        const gx = -vals['gaze.horizontal'], gy = -vals['gaze.vertical'] // screen: subject's left is viewer's right
-        const ex = cx, ey = oy + (y0 + 0.4 * (y1 - y0)) * dh
-        ctx.strokeStyle = '#d7dee7'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex + gx * L * 1.2, ey + gy * L * 1.2); ctx.stroke()
-        ctx.fillStyle = '#d7dee7'; ctx.beginPath(); ctx.arc(ex + gx * L * 1.2, ey + gy * L * 1.2, 3, 0, Math.PI * 2); ctx.fill()
-      }
-    }
-    // active AUs (right side of frame) with names and bars, amber when deviating from baseline
-    const aus = Object.entries(vals).filter(([k, val]) => k.startsWith('au.AU') && !/AU[LR]/.test(k) && val >= 0.3).sort((a, b) => b[1] - a[1]).slice(0, 8)
-    const px = rect.width - 232, py0 = 44
-    ctx.fillStyle = 'rgba(5,7,10,0.65)'; ctx.fillRect(px - 8, py0 - 14, 232, 16 + Math.max(1, aus.length) * 18 + 8)
-    ctx.fillStyle = '#7c8794'; ctx.fillText('ACTION UNITS (occurrence probability)', px, py0 - 4)
-    aus.forEach(([k, val], i) => {
-      const y = py0 + 12 + i * 18
-      const b = laneBase[k]
-      const z = b && b.scale > 0 ? (val - b.center) / b.scale : null
-      const hot = z != null && z >= 4
-      ctx.fillStyle = hot ? '#d4a24c' : '#d7dee7'
-      ctx.fillText(`${k.slice(3)} ${auName(k)}`.slice(0, 26), px, y)
-      ctx.fillStyle = '#1f2933'; ctx.fillRect(px + 150, y - 4, 60, 8)
-      ctx.fillStyle = hot ? '#d4a24c' : '#7fb4e8'; ctx.fillRect(px + 150, y - 4, 60 * val, 8)
-      ctx.fillStyle = '#7c8794'; ctx.fillText(z != null ? `${z >= 0 ? '+' : ''}${z.toFixed(0)}` : '', px + 214, y)
-    })
-    if (!aus.length) { ctx.fillStyle = '#4b5663'; ctx.fillText('no AU above 0.30', px, py0 + 12) }
-    // pattern meter (left side)
-    const pats = patternScores(vals).filter((p) => p.score >= 0.25).slice(0, 3)
-    if (pats.length) {
-      const lx = 12, ly0 = rect.height - 36 - pats.length * 18
-      ctx.fillStyle = 'rgba(5,7,10,0.65)'; ctx.fillRect(lx - 6, ly0 - 16, 230, pats.length * 18 + 26)
-      ctx.fillStyle = '#7c8794'; ctx.fillText('PATTERN (FACS appearance)', lx, ly0 - 6)
-      pats.forEach((p, i) => {
-        const y = ly0 + 10 + i * 18
-        const on = p.score >= PATTERN_ENTER
-        ctx.fillStyle = on ? '#b48ce6' : '#7c8794'; ctx.fillText(p.name, lx, y)
-        ctx.fillStyle = '#1f2933'; ctx.fillRect(lx + 110, y - 4, 80, 8)
-        ctx.fillStyle = on ? '#b48ce6' : '#4b5663'; ctx.fillRect(lx + 110, y - 4, 80 * p.score, 8)
-        ctx.fillStyle = '#7c8794'; ctx.fillText(p.score.toFixed(2), lx + 196, y)
-      })
-    }
-    // blink + speech indicators (top center)
     const now = performance.now()
-    const blink = now - lastBlinkAt < 300
-    ctx.fillStyle = blink ? '#7fb4e8' : 'rgba(127,180,232,0.25)'; ctx.beginPath(); ctx.arc(rect.width / 2 - 40, 16, 5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#7c8794'; ctx.fillText('blink', rect.width / 2 - 30, 16)
-    const sp = audioLast?.speech_prob ?? 0
-    ctx.fillStyle = sp >= 0.5 ? '#5fb8ae' : 'rgba(95,184,174,0.25)'; ctx.beginPath(); ctx.arc(rect.width / 2 + 30, 16, 5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#7c8794'; ctx.fillText(audioLast?.f0_hz ? `speech ${audioLast.f0_hz.toFixed(0)} Hz` : 'speech', rect.width / 2 + 40, 16)
-    // event flashes near the face box top
     flashes = flashes.filter((f) => f.until > now)
-    flashes.forEach((f, i) => {
-      const alpha = Math.min(1, (f.until - now) / 800)
-      ctx.globalAlpha = alpha
-      const fx = m.bbox ? ox + m.bbox[0] * dw : 12, fy = (m.bbox ? oy + m.bbox[1] * dh : 60) - 12 - i * 18
-      ctx.fillStyle = 'rgba(5,7,10,0.75)'; ctx.fillRect(fx - 4, fy - 9, ctx.measureText(f.text).width + 8, 16)
-      ctx.fillStyle = f.color; ctx.fillText(f.text, fx, fy)
-      ctx.globalAlpha = 1
+    drawHud({
+      ctx, w: rect.width, h: rect.height,
+      map: { ox: (rect.width - dw) / 2, oy: (rect.height - dh) / 2, dw, dh },
+      landmarks: m.landmarks, bbox: m.bbox, values: { ...m.values, quality: m.quality }, base: laneBase,
+      baselineReady: m.baseline_ready, tUs: m.t_us, stats: m.stats,
+      audio: audioLast, pulse: pulseHold, pulseWave: m.pulse_wave ?? null, gazeAwaySinceUs: m.gaze_away_since_us ?? null,
+      blinkAgoMs: now - lastBlinkAt, flashes, now,
+      tape: TAPE.map((t) => ({ ...t, t: hist[t.name]?.t ?? [], v: hist[t.name]?.v ?? [] })),
+      windowUs: 30e6,
+      question: currentQ ? { id: currentQ.q.id, text: currentQ.q.text, category: currentQ.q.category, sinceUs: currentQ.t_us, devs: currentQ.devs, latencyMs: currentQ.latency_ms } : null,
+      phase: calib ? calib.name : null,
+      ticker: m.baseline_ready ? ticker : null,
+      full: showOverlay,
     })
   }
 
@@ -286,7 +223,7 @@
 
   async function start() {
     if (!videoEl) return
-    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null
+    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null; ticker = null
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
       au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72,
@@ -321,9 +258,6 @@
     <div class="cam">
       <video bind:this={videoEl} muted playsinline></video>
       <canvas bind:this={overlay} class="overlay"></canvas>
-      {#if state === 'running'}
-        <div class="badge"><span class="dot"></span> LIVE ANALYSIS. frames analyzed in memory, not stored.</div>
-      {/if}
       {#if calib}
         <div class="calib">
           <div class="calib-hdr"><span class="eyebrow">calibration {calib.name}</span><span class="mono">{Math.ceil(calib.remaining)} s</span></div>
@@ -336,17 +270,6 @@
           <span class="eyebrow">baseline ready</span>
           <p class="instr mono">{baselineInfo.frames_used} frames, quality {baselineInfo.quality.toFixed(2)}{#each Object.entries(baselineInfo.states) as [k, v]} / {k} {v.frames_used}{/each}</p>
           {#if !baselineInfo.states.speaking}<p class="instr warn">no speaking-state baseline: mouth events while talking will be tagged, not scored fairly</p>{/if}
-        </div>
-      {/if}
-      {#if last}
-        <div class="readout mono">
-          <div>{tc(last.t_us)}</div>
-          <div>{last.baseline_ready ? 'baseline ready' : 'calibrating baseline'} quality {last.quality.toFixed(2)}</div>
-          {#if last.values['head.yaw_deg'] != null}<div>yaw {last.values['head.yaw_deg'].toFixed(0)} pitch {last.values['head.pitch_deg'].toFixed(0)} roll {last.values['head.roll_deg'].toFixed(0)}</div>{/if}
-          {#if readoutGaze}<div>{readoutGaze}{last?.values['head.speed_deg_s'] != null ? `, head ${last.values['head.speed_deg_s'].toFixed(0)} deg/s` : ''}</div>{/if}
-          {#if audioLast}<div>speech {audioLast.speech_prob.toFixed(2)} f0 {audioLast.f0_hz ? audioLast.f0_hz.toFixed(0) + ' Hz' : '-'} {audioLast.energy_db.toFixed(0)} dB</div>{/if}
-          {#if pulseHold}<div class="pulse" class:dim={!pulseHold.usable}>pulse ~{pulseHold.bpm.toFixed(0)} bpm <span class="muted">camera estimate, {pulseHold.usable ? 'snr ' + pulseHold.snr_db.toFixed(0) + ' dB' : 'not usable: hold still, face the light'}</span></div>{/if}
-          <div class="muted">{last.stats.analyzed_fps.toFixed(1)} fps, latency {last.stats.latency_ms_p50?.toFixed(0) ?? '-'} ms, dropped {last.stats.frames_dropped}</div>
         </div>
       {/if}
     </div>
@@ -416,7 +339,6 @@
   .instr { margin: 0 0 8px; font-size: 14px; }
   .instr.warn { color: var(--warn); font-size: 12px; }
   .passage { margin: 0; font-size: 19px; line-height: 1.5; color: var(--text); font-family: var(--font-ui); text-wrap: pretty; }
-  .readout { position: absolute; right: 12px; bottom: 10px; text-align: right; background: rgba(5,7,10,0.65); padding: 6px 10px; font-size: 11.5px; line-height: 1.5; }
   .side { border-left: 1px solid var(--line); background: var(--panel); padding: 10px 14px; overflow-y: auto; min-height: 0; }
   ul { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; }
   li { padding: 5px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
@@ -441,8 +363,6 @@
   .asked li { padding: 2px 0; }
   .asked li.rel { color: var(--accent); }
   .lanes { width: 100%; display: block; border-top: 1px solid var(--line); background: var(--panel); }
-  .readout .pulse { color: var(--pulse); }
-  .readout .pulse.dim { color: var(--muted); }
   .tally { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
   .tally b { color: var(--text); font-weight: 500; }
   .tally .zero { opacity: 0.55; }

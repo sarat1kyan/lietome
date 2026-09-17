@@ -27,7 +27,7 @@ f0_max_hz = 400.0
 long_pause_ms = 1500         # within-speech gap reported as a pause event
 voiced_prob_min = 0.5        # only voiced speech frames feed voice baselines/events
 min_event_ms = 250           # minimum voice deviation event duration
-signals = ["voice.f0_hz", "voice.energy_db"]   # audio signals that get baseline-deviation events
+signals = ["voice.f0_hz", "voice.energy_db", "voice.rate_syl_s"]   # audio signals that get baseline-deviation events
 
 [limits]                     # hostile-input guards, enforced before pixel memory is allocated
 max_file_bytes = 4294967296  # 4 GiB
@@ -100,6 +100,10 @@ shake_min_deg = 4.0
 enabled = true
 threshold = 0.5
 min_ms = 300
+
+[gaze]                       # sustained gaze-away episodes (eye-look proxy + head yaw)
+enabled = true
+min_ms = 1000
 
 [storage]
 store_landmarks = false      # 478x3 per frame is large and biometric; off by default

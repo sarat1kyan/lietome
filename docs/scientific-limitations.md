@@ -121,6 +121,20 @@ Lightman gates every window on its SNR and shows nothing below the gate. A pulse
 measurement of the estimate, not of arousal, stress or deception; posture, talking and
 laughing move it as much as anything else.
 
+## Gaze aversion
+
+Looking away is reported as an episode with direction and duration. It is not a deception cue:
+the belief that liars avoid eye contact is the most widespread folk belief about lying (Global
+Deception Research Team 2006) and is not supported by the evidence (DePaulo et al. 2003).
+People look away to retrieve memories, to formulate answers and to listen. The eye-look proxy
+comes from blendshapes, not from a calibrated eye tracker; direction is coarse.
+
+## Speech rate
+
+The live speech-rate proxy counts energy peaks (syllable nuclei) over 2 s windows. It is a
+proxy, sensitive to loudness changes and to the microphone; a change says the person spoke
+faster or slower than during their own calibration, nothing about why.
+
 ## Head gestures and unfamiliar AU pairings
 
 A nod or a shake is a kinematic pattern. It says nothing about "yes" or "no" without the words,

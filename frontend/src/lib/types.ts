@@ -1,5 +1,6 @@
 export interface SessionSummary {
   session_id: string
+  subject_id?: string | null
   created_utc: string | null
   mode: string
   media_name: string | null
@@ -89,4 +90,16 @@ export interface PulseSeries {
   bpm: number[]
   snr_db: number[]
   min_snr_db?: number
+}
+
+export type Range = [number, number]
+export interface CompareRow { signal: string; median_a: number; median_b: number; iqr_a: number; iqr_b: number; n_a: number; n_b: number; shift_sd: number | null; unit: string | null }
+export interface CompareResult {
+  a: Range; b: Range
+  signals: CompareRow[]
+  voice: CompareRow[]
+  events: Record<string, { a: number; b: number; a_per_min: number; b_per_min: number }>
+  speaking_fraction?: { a: number | null; b: number | null } | null
+  frames?: { a: number; b: number }
+  pulse_bpm?: { a: number | null; b: number | null }
 }

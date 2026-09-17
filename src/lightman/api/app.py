@@ -117,6 +117,18 @@ def create_app(
         wanted = [s for s in signals.split(",") if s]
         return store.features(session_id, table=table, signals=wanted, max_points=max_points)
 
+    @app.get("/api/sessions/{session_id}/compare")
+    def get_compare(
+        session_id: str,
+        a0: Annotated[int, Query(ge=0)],
+        a1: Annotated[int, Query(ge=0)],
+        b0: Annotated[int, Query(ge=0)],
+        b1: Annotated[int, Query(ge=0)],
+    ) -> dict[str, Any]:
+        if a1 <= a0 or b1 <= b0:
+            raise HTTPException(status_code=422, detail="ranges must have end > start")
+        return store.compare(session_id, (a0, a1), (b0, b1))
+
     @app.get("/api/sessions/{session_id}/pulse")
     def get_pulse(session_id: str) -> Any:
         return store.read_json(session_id, "pulse.json") or {"t_us": [], "bpm": [], "snr_db": []}

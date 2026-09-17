@@ -44,6 +44,12 @@ export function explain(e: LmEvent): Explanation {
         not: 'Not a medical reading and not arousal. Talking, laughing, leaning and lighting change the estimate as much as anything internal.',
         check: 'Was the person still and evenly lit through the window? If the pulse lane is faded around it, the estimate was not trusted.',
       }
+    case 'gaze_away':
+      return {
+        measured: 'Eyes or head pointed well off the camera for at least a second. The label says which way and for how long.',
+        not: 'Not avoidance or dishonesty. People look away to think, to read, to listen, and because of things in the room; the folk belief that liars avoid eye contact is not supported.',
+        check: 'Compare when it happens: while formulating an answer, while listening, or at one kind of question only.',
+      }
     case 'blink_rate_change':
       return {
         measured: 'Blinks per minute over 30 s windows moved far from the reference rate measured right after calibration.',

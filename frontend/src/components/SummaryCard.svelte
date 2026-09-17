@@ -17,9 +17,29 @@
     return [...c.entries()].sort((a, b) => b[1] - a[1])
   })
   const briefCount = $derived(events.filter((e) => e.event_type === 'expression_pattern' && e.tags.includes('brief')).length)
+  const stats = $derived.by(() => {
+    const a = detail.analysis ?? {}
+    const dur = (a.duration_us ?? 0) / 6e7
+    const post = Math.max(0.1, dur - (detail.baseline?.window_end_us ?? 0) / 6e7)
+    const n = (t: string) => events.filter((e) => e.event_type === t).length
+    const pulse = a.pulse?.median_bpm
+    return [
+      { k: 'episodes / min', v: (n('episode') / post).toFixed(1), c: 'accent' },
+      { k: 'deviations / min', v: (n('baseline_deviation') / post).toFixed(0), c: 'accent' },
+      { k: 'expression patterns', v: String(n('expression_pattern')), c: 'violet' },
+      { k: 'nods / shakes', v: `${events.filter((e) => e.event_type === 'head_gesture' && e.tags.includes('nod')).length} / ${events.filter((e) => e.event_type === 'head_gesture' && e.tags.includes('shake')).length}`, c: 'cool' },
+      { k: 'gaze away', v: String(n('gaze_away')), c: 'cool' },
+      { k: 'blinks / min', v: rate != null ? rate.toFixed(0) : '-', c: 'cool' },
+      { k: 'voice events', v: String(events.filter((e) => e.source === 'audio').length), c: 'teal' },
+      { k: 'pulse est. bpm', v: pulse != null ? String(Math.round(pulse)) : 'n/a', c: 'pulse' },
+    ]
+  })
 </script>
 
 <section class="card">
+  <div class="stats">
+    {#each stats as s (s.k)}<div class="stat {s.c}"><span class="mono v">{s.v}</span><span class="k">{s.k}</span></div>{/each}
+  </div>
   <div class="col">
     <div class="eyebrow">what happened, in plain words</div>
     <ul class="narr">
@@ -56,6 +76,11 @@
 
 <style>
   .card { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 20px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
+  .stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px; }
+  .stat { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-left: 2px solid var(--line-strong); background: var(--panel-2); }
+  .stat .v { font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .stat .k { font-size: 10.5px; color: var(--muted); letter-spacing: 0.03em; text-transform: uppercase; }
+  .stat.accent { border-left-color: var(--accent); } .stat.violet { border-left-color: var(--violet); } .stat.cool { border-left-color: var(--cool); } .stat.teal { border-left-color: var(--teal); } .stat.pulse { border-left-color: var(--pulse); }
   .narr { margin: 6px 0 0; padding-left: 16px; font-size: 13px; line-height: 1.5; max-width: 72ch; }
   .narr li { margin-bottom: 3px; }
   .bars { display: grid; gap: 4px; margin-top: 6px; }
