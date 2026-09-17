@@ -121,6 +121,13 @@ Lightman gates every window on its SNR and shows nothing below the gate. A pulse
 measurement of the estimate, not of arousal, stress or deception; posture, talking and
 laughing move it as much as anything else.
 
+## Microexpression candidates
+
+A pattern under 500 ms that peaks within 150 ms of onset is called a candidate. The
+microexpression literature (Ekman; Porter & ten Brinke 2008) works from high-frame-rate video
+and trained coders; at 13-15 fps a 150 ms onset is two frames. Candidates are places to look,
+not findings, and they occur in ordinary conversation.
+
 ## Gaze aversion
 
 Looking away is reported as an episode with direction and duration. It is not a deception cue:

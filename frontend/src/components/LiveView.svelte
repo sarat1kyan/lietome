@@ -4,7 +4,7 @@
   import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg, type LiveQuestionSummaryMsg } from '../lib/live'
   import CueGauge from './CueGauge.svelte'
   import { CALIBRATION_SECONDS, PASSAGE, phaseAt } from '../lib/calibration'
-  import { DEFAULT_SCRIPT, parseScript, type ScriptQuestion } from '../lib/protocol'
+  import { DEFAULT_SCRIPT, SCRIPT_TEMPLATES, parseScript, shuffleScript, type ScriptQuestion } from '../lib/protocol'
   import { drawHud, type Flash } from '../lib/hud'
   import type { LmEvent } from '../lib/types'
 
@@ -46,6 +46,9 @@
   let showOverlay = $state(true)
   let showProtocol = $state(false)
   let script = $state(DEFAULT_SCRIPT)
+  let subject = $state('subject_001')
+  let template = $state(SCRIPT_TEMPLATES[0].name)
+  function applyTemplate() { const t = SCRIPT_TEMPLATES.find((x) => x.name === template); if (t) script = t.text }
   const questions = $derived(parseScript(script))
   let qIndex = $state(-1)
   let asked = $state<{ q: ScriptQuestion; t_us: number; devs: number; latency_ms: number | null }[]>([])
@@ -73,6 +76,8 @@
     const tag = (ev.target as HTMLElement)?.tagName
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
     if (ev.key === 'n' && state === 'running' && showProtocol) { askNext(); ev.preventDefault() }
+    else if (ev.key === 'e' && state === 'running' && showProtocol) { endAnswer(); ev.preventDefault() }
+    else if (ev.key === 'o') { showOverlay = !showOverlay; ev.preventDefault() }
   }
   $effect(() => { window.addEventListener('keydown', onWindowKey); return () => window.removeEventListener('keydown', onWindowKey) })
   // rolling raw values per lane; drawn as raw values scaled to a running min/max until the server
@@ -166,6 +171,7 @@
       phase: calib ? calib.name : null,
       lastIndex: lastAnswer ? { id: lastAnswer.id, value: lastAnswer.index.value, band: lastAnswer.index.band } : null,
       ticker: m.baseline_ready ? ticker : null,
+      hints: m.hints ?? [],
       full: showOverlay,
     })
   }
@@ -233,7 +239,7 @@
     events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null; ticker = null; answers = []
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
-      au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72,
+      au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72, subject: subject.trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32) || 'subject_001',
       onmessage,
       onstate: (s, d) => { state = s; detail = d ?? '' },
     })
@@ -251,6 +257,7 @@
     </select>
     <label><input type="checkbox" bind:checked={useAu} disabled={state === 'running'} /> action units (resnet18)</label>
     <label><input type="checkbox" bind:checked={useAudio} disabled={state === 'running'} /> microphone</label>
+    <label class="subj">subject <input type="text" bind:value={subject} disabled={state === 'running' || state === 'connecting'} maxlength="32" spellcheck="false" /></label>
     {#if state === 'running' || state === 'connecting'}
       <button class="primary" onclick={stop}>stop and save</button>
     {:else}
@@ -285,6 +292,10 @@
         <div class="proto">
           <div class="eyebrow">interview protocol</div>
           {#if state !== 'running'}
+            <div class="tpl">
+              <select bind:value={template} onchange={applyTemplate}>{#each SCRIPT_TEMPLATES as t (t.name)}<option value={t.name}>{t.name}</option>{/each}</select>
+              <button onclick={() => (script = shuffleScript(script))} title="shuffle question order, first line stays">shuffle</button>
+            </div>
             <textarea bind:value={script} rows="7" spellcheck="false"></textarea>
             <div class="muted tiny">one question per line. C: control, R: relevant, N: neutral. add [truth] or [lie] at the end if you know the expected answer class.</div>
           {:else}
@@ -384,4 +395,8 @@
   .answer { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
   .idx { margin-left: 6px; color: var(--muted); }
   .idx.hot { color: var(--accent); }
+  .subj input { width: 110px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--text); padding: 3px 6px; font: 12px var(--font-data); margin-left: 4px; }
+  .tpl { display: flex; gap: 6px; margin: 4px 0; }
+  .tpl select { flex: 1; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 2px 6px; font-size: 11px; }
+  .tpl button { padding: 1px 8px; font-size: 11px; }
 </style>

@@ -165,6 +165,78 @@ class SessionStore:
         }
         return {"t_us": int(ts[i]), "values": values, "baseline": baseline, "state": state}
 
+    HISTORY_SIGNALS = (
+        "head.yaw_deg",
+        "head.speed_deg_s",
+        "eye.aspect_ratio_mean",
+        "blendshape.browInnerUp",
+        "blendshape.jawOpen",
+        "au.AU4",
+        "au.AU12",
+        "au.AU24",
+    )
+
+    def history(self, session_id: str) -> dict[str, Any]:
+        """This session's baseline against the same subject's other sessions."""
+        d = self._dir(session_id)
+        m = json.loads((d / "manifest.json").read_text("utf-8"))
+        subject = (m.get("subject_ids") or ["subject_001"])[0]
+        rows: list[dict[str, Any]] = []
+        for s in self.list_sessions():
+            if s.get("subject_id") != subject:
+                continue
+            sd = self.root / s["session_id"]
+            try:
+                base = json.loads((sd / "baseline.json").read_text("utf-8"))
+                ana = json.loads((sd / "analysis.json").read_text("utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            sigs = base.get("signals", {})
+            rows.append(
+                {
+                    "session_id": s["session_id"],
+                    "created_utc": s.get("created_utc"),
+                    "duration_us": s.get("duration_us"),
+                    "mode": s.get("mode"),
+                    "baseline_quality": base.get("quality"),
+                    "centers": {
+                        k: sigs[k]["center"]
+                        for k in self.HISTORY_SIGNALS
+                        if k in sigs and sigs[k].get("center") is not None
+                    },
+                    "blink_rate_per_min": ana.get("blink_rate_per_min"),
+                    "pulse_bpm": (ana.get("pulse") or {}).get("median_bpm"),
+                    "cue_index": ((ana.get("session_cues") or {}).get("index") or {}).get("value"),
+                    "episodes": (ana.get("event_counts") or {}).get("episode"),
+                }
+            )
+        cur = next((r for r in rows if r["session_id"] == session_id), None)
+        others = [r for r in rows if r["session_id"] != session_id]
+        shifts: list[dict[str, Any]] = []
+        if cur and others:
+            base = json.loads((d / "baseline.json").read_text("utf-8")).get("signals", {})
+            for k in self.HISTORY_SIGNALS:
+                vals = [r["centers"][k] for r in others if k in r["centers"]]
+                if k not in cur["centers"] or len(vals) < 1:
+                    continue
+                med = float(np.median(vals))
+                scale = (base.get(k) or {}).get("scale")
+                shifts.append(
+                    {
+                        "signal": k,
+                        "current": cur["centers"][k],
+                        "median_others": round(med, 4),
+                        "shift_sd": (
+                            round((cur["centers"][k] - med) / scale, 2)
+                            if scale and np.isfinite(scale) and scale > 0
+                            else None
+                        ),
+                        "n_others": len(vals),
+                    }
+                )
+            shifts.sort(key=lambda r: -abs(r["shift_sd"] or 0))
+        return {"subject_id": subject, "sessions": rows, "shifts": shifts}
+
     def compare(self, session_id: str, a: tuple[int, int], b: tuple[int, int]) -> dict[str, Any]:
         """Compare two time ranges of one session: per-signal median shift in robust SD units,
         event rates per minute, blink rate, speaking fraction and pulse median."""

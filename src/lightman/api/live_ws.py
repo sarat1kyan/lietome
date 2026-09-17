@@ -243,6 +243,7 @@ async def live_endpoint(
                                 "pulse_wave": (
                                     analyzer.pulse.wave() if analyzer.pulse is not None else None
                                 ),
+                                "hints": res.hints,
                                 "gaze_away_since_us": (
                                     analyzer.gaze.active_since_us
                                     if analyzer.gaze is not None

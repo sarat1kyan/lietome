@@ -92,6 +92,12 @@ PROTOTYPES: tuple[Prototype, ...] = (
     ),
     Prototype("lip press", ("au.AU24",), absent=("au.AU12",), note="lips pressed together"),
     Prototype(
+        "lip bite",
+        ("au.AU32",),
+        absent=("au.AU12",),
+        note="lip bite: self-soothing, concentration, hesitation",
+    ),
+    Prototype(
         "brow furrow",
         ("au.AU4",),
         absent=("au.AU1", "au.AU2", "au.AU12"),
@@ -104,6 +110,8 @@ PATTERN_ENTER = 0.55
 PATTERN_EXIT = 0.40
 MIN_MS = 100
 BRIEF_MAX_MS = 500
+FAST_ONSET_MS = 150
+"""A brief pattern reaching its peak this fast after onset is tagged a microexpression candidate."""
 UNILATERAL_ENTER = 0.35
 
 
@@ -214,6 +222,8 @@ def detect_expression_patterns(
             if dur_ms < MIN_MS:
                 continue
             brief = dur_ms <= BRIEF_MAX_MS
+            onset_ms = (int(t_us[s.peak_idx]) - start) / 1000
+            fast = brief and onset_ms <= FAST_ONSET_MS
             peak = float(score[s.peak_idx])
             contribs = []
             for c in p.required or tuple(x for pair in p.unilateral for x in pair):
@@ -242,12 +252,22 @@ def detect_expression_patterns(
                     start_us=start,
                     end_us=end,
                     peak_us=int(t_us[s.peak_idx]),
-                    label=f"{'brief ' if brief else ''}expression pattern: {name} ({_au_list(p)})",
+                    label=(
+                        f"{'microexpression candidate: ' if fast else 'brief ' if brief else ''}"
+                        f"expression pattern: {name} ({_au_list(p)})"
+                    ),
                     description=(
                         f"Action Units matched the FACS prototype for {name} for {dur_ms:.0f} ms "
-                        f"(pattern score {peak:.2f}). This describes the appearance of the face, "
-                        "not a felt emotion; the same pattern occurs in speech, humor and "
-                        "concentration."
+                        f"(pattern score {peak:.2f}, peak {onset_ms:.0f} ms after onset). This "
+                        "describes the appearance of the face, not a felt emotion; the same "
+                        "pattern occurs in speech, humor and concentration."
+                        + (
+                            " Fast onset and short duration match what the microexpression "
+                            "literature studies; at this frame rate that is a candidate, not a "
+                            "confirmation."
+                            if fast
+                            else ""
+                        )
                     ),
                     contributions=contribs,
                     severity=round(peak * 5, 2),
@@ -257,6 +277,7 @@ def detect_expression_patterns(
                     extractor_id=extractor_id,
                     tags=["expression", name]
                     + (["brief"] if brief else [])
+                    + (["fast_onset"] if fast else [])
                     + ([p.valence] if p.valence != "neutral" else []),
                 )
             )
@@ -347,6 +368,7 @@ class StreamingExpressionDetector:
         if dur_ms < MIN_MS:
             return []
         brief = dur_ms <= BRIEF_MAX_MS
+        fast = brief and (peak_t - start) / 1000 <= FAST_ONSET_MS
         cols = p.required or tuple(x for pair in p.unilateral for x in pair)
         contribs = [
             FeatureContribution(
@@ -374,7 +396,10 @@ class StreamingExpressionDetector:
                 start_us=start,
                 end_us=end_us,
                 peak_us=peak_t,
-                label=f"{'brief ' if brief else ''}expression pattern: {p.name} ({_au_list(p)})",
+                label=(
+                    f"{'microexpression candidate: ' if fast else 'brief ' if brief else ''}"
+                    f"expression pattern: {p.name} ({_au_list(p)})"
+                ),
                 description=(
                     f"Action Units matched the FACS prototype for {p.name} for {dur_ms:.0f} ms "
                     f"(pattern score {peak_s:.2f}). This describes the appearance of the face, not "
@@ -388,6 +413,7 @@ class StreamingExpressionDetector:
                 extractor_id=self.extractor_id,
                 tags=["expression", p.name]
                 + (["brief"] if brief else [])
+                + (["fast_onset"] if fast else [])
                 + ([p.valence] if p.valence != "neutral" else []),
             )
         ]

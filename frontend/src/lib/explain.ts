@@ -22,7 +22,9 @@ export function explain(e: LmEvent): Explanation {
       return {
         measured: 'The Action Units matched a FACS prototype for a while. The label names the appearance and the AU list says which muscles moved.',
         not: 'Not what the person felt. Posed prototypes rarely match spontaneous faces; smiles occur in politeness and embarrassment, brow lowering in concentration and bright light.',
-        check: e.tags.includes('brief')
+        check: e.tags.includes('fast_onset')
+          ? 'Microexpression candidate: brief and fast onset, the profile the literature describes. At 13-15 fps it cannot be confirmed; scrub to the frame and look yourself.'
+          : e.tags.includes('brief')
           ? 'Brief (under 500 ms): a candidate for what the microexpression literature studies. At 13-15 fps this cannot be confirmed; treat it as a place to look, not a finding.'
           : 'Long patterns during speech are usually conversational. Check whether it recurs at the same kind of question.',
       }
@@ -43,6 +45,18 @@ export function explain(e: LmEvent): Explanation {
         measured: 'The camera pulse estimate (skin color flicker over forehead and cheeks) stayed away from its reference for several seconds. Only windows above the SNR gate count.',
         not: 'Not a medical reading and not arousal. Talking, laughing, leaning and lighting change the estimate as much as anything internal.',
         check: 'Was the person still and evenly lit through the window? If the pulse lane is faded around it, the estimate was not trusted.',
+      }
+    case 'stillness':
+      return {
+        measured: 'The head stayed nearly motionless for several seconds, well under this person\'s usual speed.',
+        not: 'Reduced movement has a small association with lying in meta-analyses (d about 0.14) and a large one with listening, concentrating and being tired.',
+        check: 'Was the person listening to a question, or answering? Stillness while answering a relevant question is the only interesting case, and only if it repeats.',
+      }
+    case 'speech_pause':
+      return {
+        measured: 'A gap in speech longer than the pause threshold, between two stretches of speech.',
+        not: 'Pauses mark thinking, breathing and turn-taking; pause measures are small and inconsistent in the deception literature.',
+        check: 'Compare pause lengths across questions of the same kind.',
       }
     case 'gaze_away':
       return {

@@ -3,7 +3,7 @@
   import type { LmEvent, SessionSummary } from '../lib/types'
 
   let { events, session, onpick }: { events: LmEvent[]; session: SessionSummary | null; onpick: (e: LmEvent) => void } = $props()
-  const KINDS = new Set(['episode', 'multi_signal_deviation', 'expression_pattern', 'head_gesture', 'au_novelty', 'pulse_change', 'blink_rate_change', 'gaze_away'])
+  const KINDS = new Set(['episode', 'multi_signal_deviation', 'expression_pattern', 'head_gesture', 'au_novelty', 'pulse_change', 'blink_rate_change', 'gaze_away', 'stillness'])
   // Spread across the session: at most one moment per 15 s bucket, highest severity first.
   const moments = $derived.by(() => {
     const ranked = events.filter((e) => KINDS.has(e.event_type)).sort((a, b) => b.severity - a.severity)
@@ -17,8 +17,8 @@
     }
     return out.sort((a, b) => a.start_us - b.start_us)
   })
-  const kind = (e: LmEvent) => (e.event_type === 'expression_pattern' ? 'expression' : e.event_type === 'au_novelty' ? 'new pairing' : e.event_type === 'head_gesture' ? 'gesture' : e.event_type === 'gaze_away' ? 'gaze' : e.event_type === 'pulse_change' ? 'pulse' : e.event_type === 'blink_rate_change' ? 'blinks' : 'episode')
-  const short = (e: LmEvent) => e.label.replace(/^(brief )?expression pattern: /, '$1').replace(/^new AU pairing: /, '').replace(/^head /, '').replace(/^pulse estimate /, '').replace(/^gaze away /, 'away ')
+  const kind = (e: LmEvent) => (e.event_type === 'expression_pattern' ? 'expression' : e.event_type === 'au_novelty' ? 'new pairing' : e.event_type === 'head_gesture' ? 'gesture' : e.event_type === 'gaze_away' ? 'gaze' : e.event_type === 'stillness' ? 'still' : e.event_type === 'pulse_change' ? 'pulse' : e.event_type === 'blink_rate_change' ? 'blinks' : 'episode')
+  const short = (e: LmEvent) => e.label.replace(/^(brief )?expression pattern: /, '$1').replace(/^new AU pairing: /, '').replace(/^head /, '').replace(/^pulse estimate /, '').replace(/^gaze away /, 'away ').replace(/^microexpression candidate: /, 'micro? ')
   function hideImg(ev: Event) { (ev.currentTarget as HTMLImageElement).hidden = true }
 </script>
 

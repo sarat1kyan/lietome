@@ -5,6 +5,13 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 ## [Unreleased]
 
 ### Added
+- Stillness episodes (offline and live), live speech pauses, microexpression candidate tier
+  (brief + fast onset), lip bite prototype (ADR-022).
+- Subject history endpoint and card; subject id input in the live view.
+- Capture coaching hints on the HUD (face small, dim, blurry, turned away, low fps).
+- Bootstrap interval and permutation p on the relevant-vs-control index delta.
+- Timeline expression lane, event list sort and filter, copy-summary button, script templates,
+  shuffle, hotkeys n/e/o.
 - Possibility-of-deception cue index per session, per question and per live answer, with
   drivers, counters, reliability and caveat; relevant-vs-control possibility text (ADR-021).
 - New cues: negative-affect pattern, brief pattern, facial tension.

@@ -345,11 +345,28 @@ def possibility_summary(questions: list[QuestionSummary]) -> dict[str, Any] | No
         }
         for q, v in rows
     ]
+    ci = None
+    p_perm = None
+    if len(rel) >= 2 and len(ctl) >= 2:
+        rng = np.random.default_rng(7)
+        r_arr, c_arr = np.asarray(rel), np.asarray(ctl)
+        boots = [
+            float(rng.choice(r_arr, r_arr.size).mean() - rng.choice(c_arr, c_arr.size).mean())
+            for _ in range(2000)
+        ]
+        ci = [
+            round(float(np.percentile(boots, 2.5)), 1),
+            round(float(np.percentile(boots, 97.5)), 1),
+        ]
+        pp = _permutation_p(list(rel), list(ctl))
+        p_perm = round(pp, 3) if pp is not None else None
     out: dict[str, Any] = {
         "per_question": per_q,
         "mean_relevant": round(float(np.mean(rel)), 1) if rel else None,
         "mean_control": round(float(np.mean(ctl)), 1) if ctl else None,
         "delta": round(float(np.mean(rel) - np.mean(ctl)), 1) if rel and ctl else None,
+        "delta_ci95": ci,
+        "permutation_p": p_perm,
         "top_question": top_q.id,
         "top_index": top_v,
         "top_band": top_q.cue_index["band"] if top_q.cue_index else None,
@@ -357,10 +374,14 @@ def possibility_summary(questions: list[QuestionSummary]) -> dict[str, Any] | No
     parts = []
     if rel and ctl:
         d = out["delta"]
+        ci_txt = f", 95% bootstrap interval {ci[0]:+.0f} to {ci[1]:+.0f}" if ci else ""
+        p_txt = f", permutation p {p_perm:.2f}" if p_perm is not None else ""
         parts.append(
             f"Relevant questions averaged a cue index of {out['mean_relevant']:.0f} against "
-            f"{out['mean_control']:.0f} for control questions ({d:+.0f})."
+            f"{out['mean_control']:.0f} for control questions ({d:+.0f}{ci_txt}{p_txt})."
         )
+        if ci and ci[0] <= 0 <= ci[1]:
+            parts.append("The interval includes zero: the difference could be noise.")
         if d is not None and d >= 10:
             parts.append(
                 "The relevant answers carried more lie-associated cues than this person's own "
