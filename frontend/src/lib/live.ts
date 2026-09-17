@@ -12,10 +12,12 @@ export interface LiveFrameMsg {
   landmarks: number[] | null // flat x,y normalized, 478 points
   baseline_ready: boolean
   pulse: { bpm: number; snr_db: number; usable: boolean } | null
+  pulse_wave?: number[] | null
+  gaze_away_since_us?: number | null
   stats: { analyzed_fps: number; latency_ms_p50: number | null; frames_dropped: number; frames_analyzed: number }
 }
 export interface LiveEventsMsg { type: 'events'; events: any[] }
-export interface LiveAudioMsg { type: 'audio'; t_us: number; speech_prob: number; f0_hz: number | null; energy_db: number; baseline_ready: boolean }
+export interface LiveAudioMsg { type: 'audio'; t_us: number; speech_prob: number; f0_hz: number | null; energy_db: number; rate_syl_s?: number | null; voiced?: boolean; baseline_ready: boolean }
 export interface LiveSessionMsg { type: 'session'; session_id: string }
 export interface LiveBaselineMsg { type: 'baseline'; frames_used: number; quality: number; states: Record<string, { frames_used: number; quality: number }>; signals?: Record<string, { center: number; scale: number }> }
 export interface LiveBaselineUpdateMsg { type: 'baseline_update'; signals: Record<string, { center: number; scale: number }> }

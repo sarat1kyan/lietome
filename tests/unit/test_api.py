@@ -57,6 +57,15 @@ def test_session_detail_events_features(client: TestClient) -> None:
     assert "eye.aspect_ratio_mean" in fr["values"] and "t_us" not in fr["values"]
     assert fr["baseline"]["eye.aspect_ratio_mean"]["scale"] > 0
     assert client.get(f"/api/sessions/{sid}/frame", params={"t_us": -5}).status_code == 422
+    cmp = client.get(
+        f"/api/sessions/{sid}/compare",
+        params={"a0": 0, "a1": 1_000_000, "b0": 1_500_000, "b1": 3_000_000},
+    ).json()
+    assert cmp["frames"]["a"] > 0 and cmp["frames"]["b"] > 0
+    assert cmp["signals"] and all("shift_sd" in r for r in cmp["signals"])
+    assert set(cmp["events"]) <= {e["event_type"] for e in ev}
+    bad = client.get(f"/api/sessions/{sid}/compare", params={"a0": 5, "a1": 5, "b0": 0, "b1": 1})
+    assert bad.status_code == 422
     thumb_ok = [e for e in ev if e["event_type"] != "blink"]
     r = client.get(f"/api/sessions/{sid}/thumbnails/{thumb_ok[0]['event_id']}")
     assert r.status_code in (200, 404)

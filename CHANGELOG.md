@@ -5,6 +5,14 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 ## [Unreleased]
 
 ### Added
+- Gaze-away episodes (gaze_away events) offline and live, with a running counter on the HUD.
+- Live speech-rate proxy (voice.rate_syl_s) in the audio baseline, events and table.
+- Span comparison: GET /api/sessions/{id}/compare, compare mode on the timeline (drag A then B,
+  protocol presets), shift table in robust SD, event rates, speaking fraction, pulse medians.
+- On-video HUD: face-mesh contours, corner brackets, head axes, gaze reticle, status block,
+  question card, AU panel, pattern meter, signal tape, pulse waveform, voice level, event
+  ticker (ADR-020).
+- Sessions view: stats row and change-density strip.
 - Camera pulse estimate (rPPG, POS + SNR gate): skin.r/g/b columns, pulse.json, pulse_change
   events, timeline lane, live HUD readout (ADR-019).
 - Head gesture events (nod, shake) offline and live.

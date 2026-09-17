@@ -24,3 +24,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 017 | Expression patterns and the deception-research cue layer | accepted |
 | 018 | Exclusion AUs in prototypes, per-signal event rules, frame readout | accepted |
 | 019 | Camera pulse estimate, head gestures, unfamiliar AU pairings | accepted |
+| 020 | Gaze-away episodes, live speech rate, span comparison, on-video HUD | accepted |

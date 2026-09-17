@@ -3,7 +3,7 @@
   import type { LmEvent, SessionSummary } from '../lib/types'
 
   let { events, session, onpick }: { events: LmEvent[]; session: SessionSummary | null; onpick: (e: LmEvent) => void } = $props()
-  const KINDS = new Set(['episode', 'multi_signal_deviation', 'expression_pattern', 'head_gesture', 'au_novelty', 'pulse_change', 'blink_rate_change'])
+  const KINDS = new Set(['episode', 'multi_signal_deviation', 'expression_pattern', 'head_gesture', 'au_novelty', 'pulse_change', 'blink_rate_change', 'gaze_away'])
   // Spread across the session: at most one moment per 15 s bucket, highest severity first.
   const moments = $derived.by(() => {
     const ranked = events.filter((e) => KINDS.has(e.event_type)).sort((a, b) => b.severity - a.severity)
@@ -17,8 +17,8 @@
     }
     return out.sort((a, b) => a.start_us - b.start_us)
   })
-  const kind = (e: LmEvent) => (e.event_type === 'expression_pattern' ? 'expression' : e.event_type === 'au_novelty' ? 'new pairing' : e.event_type === 'head_gesture' ? 'gesture' : e.event_type === 'pulse_change' ? 'pulse' : e.event_type === 'blink_rate_change' ? 'blinks' : 'episode')
-  const short = (e: LmEvent) => e.label.replace(/^(brief )?expression pattern: /, '$1').replace(/^new AU pairing: /, '').replace(/^head /, '').replace(/^pulse estimate /, '')
+  const kind = (e: LmEvent) => (e.event_type === 'expression_pattern' ? 'expression' : e.event_type === 'au_novelty' ? 'new pairing' : e.event_type === 'head_gesture' ? 'gesture' : e.event_type === 'gaze_away' ? 'gaze' : e.event_type === 'pulse_change' ? 'pulse' : e.event_type === 'blink_rate_change' ? 'blinks' : 'episode')
+  const short = (e: LmEvent) => e.label.replace(/^(brief )?expression pattern: /, '$1').replace(/^new AU pairing: /, '').replace(/^head /, '').replace(/^pulse estimate /, '').replace(/^gaze away /, 'away ')
   function hideImg(ev: Event) { (ev.currentTarget as HTMLImageElement).hidden = true }
 </script>
 
@@ -28,7 +28,7 @@
   <div class="strip">
     {#each moments as e (e.event_id)}
       {@const src = session ? api.thumbnail(session.session_id, e.event_id) : null}
-      <button class="m" class:expr={e.event_type === 'expression_pattern' || e.event_type === 'au_novelty'} class:pulse={e.event_type === 'pulse_change'} class:gesture={e.event_type === 'head_gesture'} onclick={() => onpick(e)} title={e.description}>
+      <button class="m" class:expr={e.event_type === 'expression_pattern' || e.event_type === 'au_novelty'} class:pulse={e.event_type === 'pulse_change'} class:gesture={e.event_type === 'head_gesture' || e.event_type === 'gaze_away'} onclick={() => onpick(e)} title={e.description}>
         <div class="pic">{#if src}<img {src} alt="" loading="lazy" onerror={hideImg} />{/if}<span class="k">{kind(e)}</span></div>
         <div class="lbl">{short(e)}</div>
         <div class="mono meta">{tc(e.start_us).slice(3)} <span class="sev">{e.severity > 20 ? '>20' : e.severity.toFixed(1)}</span></div>

@@ -265,6 +265,28 @@ class StreamingPulse:
         self.estimates: list[PulseEstimate] = []
         self.latest: PulseEstimate | None = None
 
+    def wave(self, seconds: float = 3.0, points: int = 45) -> list[float] | None:
+        """Recent detrended POS pulse trace, normalized to [-1, 1], for a small HUD waveform."""
+        if len(self._t) < 12:
+            return None
+        t_end = self._t[-1]
+        t0 = t_end - int(seconds * 1e6)
+        idx = [i for i, t in enumerate(self._t) if t >= t0 and self._q[i] >= self.min_quality]
+        if len(idx) < 12:
+            return None
+        t = np.asarray([self._t[i] for i in idx], dtype=np.float64)
+        rgb = np.asarray([self._rgb[i] for i in idx], dtype=np.float64)
+        if not np.isfinite(rgb).all():
+            return None
+        grid = np.linspace(t[0], t[-1], points)
+        res = np.column_stack([np.interp(grid, t, rgb[:, ch]) for ch in range(3)])
+        fs = points / max(1e-6, (t[-1] - t[0]) / 1e6)
+        pulse = _detrend(_pos_pulse(res), fs, win_s=0.6)
+        amp = float(np.max(np.abs(pulse)))
+        if amp <= 1e-12:
+            return None
+        return [round(float(v), 3) for v in pulse / amp]
+
     def push(
         self, t_us: int, rgb: tuple[float, float, float], quality: float
     ) -> PulseEstimate | None:

@@ -1,13 +1,16 @@
 <script lang="ts">
   import { tc } from '../lib/api'
-  import type { Baseline, FeatureSeries, LmEvent, PulseSeries } from '../lib/types'
+  import type { Baseline, FeatureSeries, LmEvent, PulseSeries, Range } from '../lib/types'
 
   let {
     events, video, audio, baseline, audioBaseline, duration, selected, onpick, onseek, protocol = null, pulse = null,
+    compare = null, onrange = () => {},
     playhead = $bindable(0),
   }: {
     protocol?: any
     pulse?: PulseSeries | null
+    compare?: { a: Range | null; b: Range | null } | null
+    onrange?: (which: 'a' | 'b', r: Range) => void
     events: LmEvent[]; video: FeatureSeries | null; audio: FeatureSeries | null
     baseline: Baseline | null; audioBaseline: Baseline | null; duration: number
     selected: LmEvent | null; onpick: (e: LmEvent) => void; onseek: (us: number) => void; playhead: number
@@ -18,6 +21,8 @@
   const LABEL_W = 168
   const RULER_H = 22
   const EVENT_H = 26
+  const DENSITY_H = 12
+  let drag = $state<{ x0: number; x1: number } | null>(null)
 
   let canvas = $state<HTMLCanvasElement | null>(null)
   let wrap = $state<HTMLDivElement | null>(null)
@@ -43,7 +48,19 @@
 
   const hasPulse = $derived(Boolean(pulse && pulse.t_us.length > 2))
   const total = $derived(Math.max(duration, ...lanes.map((l) => l.t[l.t.length - 1] ?? 0), 1))
-  const height = $derived(RULER_H + EVENT_H + (lanes.length + (hasPulse ? 1 : 0)) * LANE_H + 8)
+  const TOP = RULER_H + EVENT_H + DENSITY_H
+  const height = $derived(TOP + (lanes.length + (hasPulse ? 1 : 0)) * LANE_H + 8)
+  // change density: per 2 s bin, number of deviation events active and the max severity
+  const density = $derived.by(() => {
+    const bin = 2e6, n = Math.max(1, Math.ceil(total / bin))
+    const count = new Float32Array(n), sev = new Float32Array(n)
+    for (const e of events) {
+      if (e.event_type !== 'baseline_deviation' && e.source !== 'audio') continue
+      const i0 = Math.floor(e.start_us / bin), i1 = Math.min(n - 1, Math.floor(e.end_us / bin))
+      for (let i = i0; i <= i1; i++) { count[i] += 1; if (e.severity > sev[i]) sev[i] = e.severity }
+    }
+    return { bin, count, sev }
+  })
   const xOf = (us: number) => LABEL_W + ((width - LABEL_W - 12) * us) / total
   const usOf = (x: number) => Math.max(0, Math.min(total, ((x - LABEL_W) / (width - LABEL_W - 12)) * total))
 
@@ -77,7 +94,7 @@
       const x0 = xOf(q.start_us), x1 = Math.max(x0 + 2, xOf(q.end_us))
       ctx.fillStyle = q.category === 'relevant' ? 'rgba(212,162,76,0.10)' : q.category === 'control' ? 'rgba(127,180,232,0.10)' : 'rgba(124,135,148,0.08)'
       ctx.fillRect(x0, RULER_H, x1 - x0, height - RULER_H)
-      ctx.fillStyle = col.muted; ctx.fillText(q.id, x0 + 3, RULER_H + EVENT_H + 8)
+      ctx.fillStyle = col.muted; ctx.fillText(q.id, x0 + 3, TOP + 8)
     }
     // baseline window shading
     if (baseline) {
@@ -93,7 +110,7 @@
       if (e.event_type === 'blink') { ctx.fillStyle = col.cool; ctx.globalAlpha = 0.55; ctx.fillRect(xOf(e.start_us), ey + EVENT_H - 5, Math.max(1, xOf(e.end_us) - xOf(e.start_us)), 3); ctx.globalAlpha = 1; continue }
       const x0 = xOf(e.start_us), x1 = Math.max(x0 + 2, xOf(e.end_us))
       const sel = selected?.event_id === e.event_id
-      ctx.fillStyle = e.event_type === 'expression_pattern' || e.event_type === 'au_novelty' ? cssVar('--violet') : e.event_type === 'pulse_change' ? cssVar('--pulse') : e.event_type === 'head_gesture' ? col.cool : e.source === 'audio' ? col.teal : col.accent
+      ctx.fillStyle = e.event_type === 'expression_pattern' || e.event_type === 'au_novelty' ? cssVar('--violet') : e.event_type === 'pulse_change' ? cssVar('--pulse') : e.event_type === 'head_gesture' || e.event_type === 'gaze_away' ? col.cool : e.source === 'audio' ? col.teal : col.accent
       ctx.globalAlpha = sel ? 1 : 0.7
       const h = e.level === 'interpretation' ? EVENT_H - 8 : EVENT_H - 14
       ctx.fillRect(x0, ey + (EVENT_H - h) / 2, x1 - x0, h)
@@ -101,9 +118,35 @@
       if (sel) { ctx.strokeStyle = col.text; ctx.strokeRect(x0 - 1.5, ey + 1.5, x1 - x0 + 3, EVENT_H - 3) }
     }
 
+    // change density strip: how many signals were out of range, per 2 s
+    {
+      const dy = RULER_H + EVENT_H
+      ctx.fillStyle = col.muted; ctx.fillText('change density', 8, dy + DENSITY_H / 2)
+      const d = density
+      for (let i = 0; i < d.count.length; i++) {
+        if (!d.count[i]) continue
+        const a = Math.min(1, 0.15 + d.count[i] / 6), hot = d.sev[i] >= 6
+        ctx.fillStyle = hot ? col.accent : col.cool; ctx.globalAlpha = a
+        ctx.fillRect(xOf(i * d.bin), dy + 2, Math.max(1, xOf((i + 1) * d.bin) - xOf(i * d.bin)), DENSITY_H - 4)
+      }
+      ctx.globalAlpha = 1
+    }
+    // compare spans
+    if (compare) {
+      for (const [which, r] of [['a', compare.a], ['b', compare.b]] as const) {
+        if (!r) continue
+        ctx.fillStyle = which === 'a' ? 'rgba(212,162,76,0.10)' : 'rgba(127,180,232,0.10)'
+        ctx.fillRect(xOf(r[0]), RULER_H, xOf(r[1]) - xOf(r[0]), height - RULER_H)
+        ctx.strokeStyle = which === 'a' ? col.accent : col.cool; ctx.setLineDash([4, 3])
+        ctx.beginPath(); ctx.moveTo(xOf(r[0]), RULER_H); ctx.lineTo(xOf(r[0]), height); ctx.moveTo(xOf(r[1]), RULER_H); ctx.lineTo(xOf(r[1]), height); ctx.stroke(); ctx.setLineDash([])
+        ctx.fillStyle = which === 'a' ? col.accent : col.cool; ctx.font = 'bold 11px "JetBrains Mono", monospace'; ctx.fillText(which.toUpperCase(), xOf(r[0]) + 4, RULER_H + 10); ctx.font = '10.5px "JetBrains Mono", monospace'
+      }
+      if (drag) { ctx.fillStyle = 'rgba(215,222,231,0.12)'; ctx.fillRect(Math.min(drag.x0, drag.x1), RULER_H, Math.abs(drag.x1 - drag.x0), height - RULER_H) }
+    }
+
     // lanes in robust SD units
     lanes.forEach((lane, i) => {
-      const y0 = RULER_H + EVENT_H + i * LANE_H
+      const y0 = TOP + i * LANE_H
       const ymid = y0 + LANE_H / 2
       const scaleY = (LANE_H - 10) / (2 * ZLIM)
       ctx.strokeStyle = col.line; ctx.beginPath(); ctx.moveTo(LABEL_W, y0 + LANE_H); ctx.lineTo(width, y0 + LANE_H); ctx.stroke()
@@ -139,7 +182,7 @@
 
     // pulse lane: absolute bpm, faded where the SNR gate rejects the estimate
     if (hasPulse && pulse) {
-      const y0 = RULER_H + EVENT_H + lanes.length * LANE_H
+      const y0 = TOP + lanes.length * LANE_H
       const lo = 45, hi = 135
       const yOf = (bpm: number) => y0 + LANE_H - 5 - ((Math.max(lo, Math.min(hi, bpm)) - lo) / (hi - lo)) * (LANE_H - 10)
       ctx.strokeStyle = col.line; ctx.beginPath(); ctx.moveTo(LABEL_W, y0 + LANE_H); ctx.lineTo(width, y0 + LANE_H); ctx.stroke()
@@ -181,8 +224,28 @@
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const x = e.clientX - r.left
     hover = x >= LABEL_W ? { x, us: usOf(x) } : null
+    if (drag) drag = { x0: drag.x0, x1: Math.max(LABEL_W, x) }
   }
+  function onDown(e: MouseEvent) {
+    if (!compare) return
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = e.clientX - r.left
+    if (x >= LABEL_W) drag = { x0: x, x1: x }
+  }
+  function onUp(e: MouseEvent) {
+    if (!drag || !compare) return
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = Math.max(LABEL_W, e.clientX - r.left)
+    const a = usOf(Math.min(drag.x0, x)), b = usOf(Math.max(drag.x0, x))
+    const wasDrag = Math.abs(x - drag.x0) > 4
+    drag = null
+    if (!wasDrag || b - a < 250e3) return
+    onrange(!compare.a || (compare.a && compare.b) ? 'a' : 'b', [Math.round(a), Math.round(b)])
+    suppressClick = true
+  }
+  let suppressClick = false
   function onClick(e: MouseEvent) {
+    if (suppressClick) { suppressClick = false; return }
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const x = e.clientX - r.left, y = e.clientY - r.top
     if (x < LABEL_W) return
@@ -201,10 +264,10 @@
 <div class="timeline" bind:this={wrap}>
   <div class="hdr">
     <span class="eyebrow">timeline</span>
-    <span class="muted">lanes in robust SD from baseline (median / 1.4826 MAD). dashed = +-3 SD. shaded = calibration window. click the event strip to inspect, elsewhere to seek.</span>
+    <span class="muted">{compare ? 'compare mode: drag to set span A, then span B. click elsewhere to seek.' : 'lanes in robust SD from baseline (median / 1.4826 MAD). dashed = +-3 SD. shaded = calibration window. click the event strip to inspect, elsewhere to seek.'}</span>
     {#if hover}<span class="mono hov">{tc(hover.us)}</span>{/if}
   </div>
-  <canvas bind:this={canvas} style="width:{width}px;height:{height}px" onmousemove={onMove} onmouseleave={() => (hover = null)} onclick={onClick}></canvas>
+  <canvas bind:this={canvas} style="width:{width}px;height:{height}px" class:cmp={Boolean(compare)} onmousemove={onMove} onmouseleave={() => { hover = null; drag = null }} onmousedown={onDown} onmouseup={onUp} onclick={onClick}></canvas>
 </div>
 
 <style>
@@ -212,4 +275,5 @@
   .hdr { display: flex; gap: 14px; align-items: baseline; padding: 0 0 6px 8px; font-size: 11.5px; }
   .hov { margin-left: auto; color: var(--text); }
   canvas { display: block; cursor: crosshair; }
+  canvas.cmp { cursor: col-resize; }
 </style>

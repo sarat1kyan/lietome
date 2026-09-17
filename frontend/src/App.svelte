@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { api } from './lib/api'
-  import type { FeatureSeries, LmEvent, PulseSeries, SessionDetail, SessionSummary } from './lib/types'
+  import type { FeatureSeries, LmEvent, PulseSeries, Range, SessionDetail, SessionSummary } from './lib/types'
   import SessionRail from './components/SessionRail.svelte'
   import VideoStage from './components/VideoStage.svelte'
   import Timeline from './components/Timeline.svelte'
@@ -12,6 +12,7 @@
   import ProtocolTable from './components/ProtocolTable.svelte'
   import FramePanel from './components/FramePanel.svelte'
   import KeyMoments from './components/KeyMoments.svelte'
+  import ComparePanel from './components/ComparePanel.svelte'
 
   let sessions = $state<SessionSummary[]>([])
   let current = $state<SessionSummary | null>(null)
@@ -26,9 +27,11 @@
   let error = $state<string | null>(null)
   let loading = $state(false)
   let view = $state<'sessions' | 'live'>('sessions')
+  let compare = $state<{ a: Range | null; b: Range | null } | null>(null)
+  function setRange(which: 'a' | 'b', r: Range) { compare = { a: which === 'a' ? r : compare?.a ?? null, b: which === 'b' ? r : which === 'a' ? null : compare?.b ?? null } }
 
   const VIDEO_SIGNALS = ['head.yaw_deg', 'head.pitch_deg', 'eye.aspect_ratio_mean', 'blendshape.browDownLeft', 'blendshape.mouthPressLeft', 'blendshape.jawOpen', 'au.AU4', 'au.AU6', 'au.AU12', 'au.AU24']
-  const AUDIO_SIGNALS = ['voice.f0_hz', 'voice.energy_db']
+  const AUDIO_SIGNALS = ['voice.f0_hz', 'voice.energy_db', 'voice.rate_syl_s']
 
   async function open(s: SessionSummary) {
     loading = true; error = null; selected = null
@@ -39,7 +42,7 @@
       protocol = await api.protocol(s.session_id)
       audio = s.has_audio ? await api.features(s.session_id, 'audio', AUDIO_SIGNALS) : null
       pulse = await api.pulse(s.session_id).catch(() => null)
-      playhead = 0
+      playhead = 0; compare = null
     } catch (e) {
       error = String(e)
     } finally {
@@ -71,7 +74,8 @@
       const i = selected ? list.findIndex((e) => e.event_id === selected!.event_id) : -1
       const next = ev.key === 'j' ? list[i + 1] : list[Math.max(0, i - 1)]
       if (next) pick(next)
-    } else if (ev.key === 'Escape') selected = null
+    } else if (ev.key === 'Escape') { selected = null; if (compare && !compare.a) compare = null }
+    else if (ev.key === 'c') compare = compare ? null : { a: null, b: null }
   }
 
   onMount(async () => {
@@ -96,7 +100,8 @@
     </div>
     <div class="top-right muted">
       {#if api.isDemo()}<span class="chip">demo data</span>{/if}
-      <span class="keys mono" title="keyboard">arrows seek, shift+arrows 5 s, j/k next/prev event, esc clear</span>
+      {#if view === 'sessions' && current}<button class="cmpbtn" class:on={Boolean(compare)} onclick={() => (compare = compare ? null : { a: null, b: null })}>{compare ? 'exit compare' : 'compare spans'}</button>{/if}
+      <span class="keys mono" title="keyboard">arrows seek, shift+arrows 5 s, j/k next/prev event, c compare, esc clear</span>
       <span>observations and interpretations of measured behavior. not a lie detector.</span>
     </div>
   </header>
@@ -112,7 +117,10 @@
       <VideoStage session={current} {events} {selected} bind:playhead />
       <FramePanel sessionId={current.session_id} {playhead} />
       <Timeline {events} {video} {audio} {pulse} {protocol} baseline={detail.baseline} audioBaseline={detail.audio_baseline}
-                duration={current.duration_us ?? 0} bind:playhead {selected} onpick={pick} onseek={seekTo} />
+                duration={current.duration_us ?? 0} bind:playhead {selected} onpick={pick} onseek={seekTo} {compare} onrange={setRange} />
+      {#if compare}
+        <ComparePanel sessionId={current.session_id} a={compare.a} b={compare.b} {protocol} onclear={() => (compare = null)} onpreset={(a, b) => (compare = { a, b })} />
+      {/if}
       <KeyMoments {events} session={current} onpick={pick} />
       <ProtocolTable {protocol} onseek={seekTo} />
       <SummaryCard {detail} {events} />
@@ -149,8 +157,10 @@
   .top-right { display: flex; gap: 12px; align-items: center; font-size: 12px; }
   .keys { font-size: 10.5px; color: var(--faint); }
   .chip { border: 1px solid var(--accent); color: var(--accent); padding: 1px 7px; border-radius: 10px; font-size: 11px; }
-  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
+  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
   .empty { padding: 48px; color: var(--muted); }
   .error { margin: 12px; padding: 10px 12px; border: 1px solid var(--warn); color: var(--warn); border-radius: var(--radius); }
   code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; }
+  .cmpbtn { padding: 2px 9px; font-size: 11px; }
+  .cmpbtn.on { border-color: var(--accent); color: var(--accent); }
 </style>

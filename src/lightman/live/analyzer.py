@@ -26,6 +26,7 @@ from lightman.core.logging import get_logger
 from lightman.core.timebase import utc_now_iso
 from lightman.events.blinkrate import blink_rate_events
 from lightman.events.blinks import blink_threshold
+from lightman.events.gaze import StreamingGazeAway
 from lightman.events.gestures import StreamingHeadGestures
 from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
@@ -159,6 +160,7 @@ class LiveAnalyzer:
             else None
         )
         self.gestures: StreamingHeadGestures | None = None
+        self.gaze: StreamingGazeAway | None = None
         self.novelty = (
             AUNoveltyDetector(
                 subject_id=subject_id,
@@ -326,6 +328,14 @@ class LiveAnalyzer:
                 )
             if self.novelty is not None:
                 new_events += self.novelty.update(t_us, quality, values)
+            if self.gaze is not None and "gaze.horizontal" in values:
+                new_events += self.gaze.update(
+                    t_us,
+                    quality,
+                    values["gaze.horizontal"],
+                    values["gaze.vertical"],
+                    values.get("head.yaw_deg", 0.0),
+                )
             if self.adaptive is not None:
                 st = state if state in self.adaptive.states() else STATE_ALL
                 self.adaptive.update(st, t_us, values)
@@ -349,7 +359,7 @@ class LiveAnalyzer:
             pulse=pulse_now,
         )
 
-    _THUMB_TYPES = ("episode", "expression_pattern", "head_gesture", "au_novelty")
+    _THUMB_TYPES = ("episode", "expression_pattern", "head_gesture", "au_novelty", "gaze_away")
 
     def _thumbnail(
         self,
@@ -432,6 +442,15 @@ class LiveAnalyzer:
             )
         if self.novelty is not None:
             self.novelty.finish_learning(snap.quality)
+        if self.cfg.gaze.enabled:
+            self.gaze = StreamingGazeAway(
+                subject_id=self.subject_id,
+                extractor_id=ext,
+                baseline_quality=snap.quality,
+                id_start=850_000,
+                frame_period_us=self.period_us,
+                min_ms=self.cfg.gaze.min_ms,
+            )
         self.blinks = StreamingBlinkDetector(
             self.cfg.events,
             blink_threshold(snap, self.cfg.events),
@@ -476,6 +495,8 @@ class LiveAnalyzer:
         self.events.extend(self.episodes.flush())
         if self.expressions is not None:
             self.events.extend(self.expressions.flush(self._last_t or 0))
+        if self.gaze is not None:
+            self.events.extend(self.gaze.flush(self._last_t or 0))
         if self.blinks is not None and self.baseline.snapshot is not None:
             self.events.extend(
                 blink_rate_events(
@@ -619,6 +640,7 @@ class LiveAnalyzer:
                     "voice.voiced_prob": pa.array(
                         [1.0 if h[4] else 0.0 for h in hops], type=pa.float32()
                     ),
+                    "voice.rate_syl_s": pa.array([h[5] for h in hops], type=pa.float32()),
                 }
             )
             af_path = session_dir / "audio_features.parquet"
