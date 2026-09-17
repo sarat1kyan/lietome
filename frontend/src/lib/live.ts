@@ -19,10 +19,16 @@ export interface LiveFrameMsg {
 export interface LiveEventsMsg { type: 'events'; events: any[] }
 export interface LiveAudioMsg { type: 'audio'; t_us: number; speech_prob: number; f0_hz: number | null; energy_db: number; rate_syl_s?: number | null; voiced?: boolean; baseline_ready: boolean }
 export interface LiveSessionMsg { type: 'session'; session_id: string }
+export interface CueIndex { value: number | null; band: string; drivers: string[]; counters: string[]; reliability: number; text: string; caveat: string }
+export interface LiveQuestionSummaryMsg {
+  type: 'question_summary'; id: string; text: string; category: string; start_us: number; end_us: number
+  response_latency_ms: number | null; deviations: number; episodes: number; expression_patterns: string[]
+  cues: any; index: CueIndex; control_mean_index: number | null
+}
 export interface LiveBaselineMsg { type: 'baseline'; frames_used: number; quality: number; states: Record<string, { frames_used: number; quality: number }>; signals?: Record<string, { center: number; scale: number }> }
 export interface LiveBaselineUpdateMsg { type: 'baseline_update'; signals: Record<string, { center: number; scale: number }> }
 export interface LiveErrorMsg { type: 'error'; detail: string }
-export type LiveMsg = LiveFrameMsg | LiveEventsMsg | LiveAudioMsg | LiveSessionMsg | LiveBaselineMsg | LiveBaselineUpdateMsg | LiveErrorMsg | { type: 'ready'; session_id: string } | { type: 'marked'; id: string; t_us: number }
+export type LiveMsg = LiveFrameMsg | LiveEventsMsg | LiveAudioMsg | LiveSessionMsg | LiveBaselineMsg | LiveBaselineUpdateMsg | LiveErrorMsg | { type: 'ready'; session_id: string } | { type: 'marked'; id: string; t_us: number } | LiveQuestionSummaryMsg
 
 export interface LiveOptions {
   au: boolean

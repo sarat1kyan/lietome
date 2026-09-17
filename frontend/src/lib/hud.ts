@@ -42,6 +42,7 @@ export interface HudInput {
   question: { id: string; text: string; category: string; sinceUs: number; devs: number; latencyMs: number | null } | null
   phase: string | null
   ticker: string | null
+  lastIndex: { id: string; value: number | null; band: string } | null
   full: boolean
 }
 
@@ -158,6 +159,16 @@ export function drawHud(inp: HudInput) {
       ctx.fillStyle = q.category === 'relevant' ? C.accent : q.category === 'control' ? C.cool : C.muted
       ctx.font = mono(10); ctx.fillText(`${q.id}  ${q.category.toUpperCase()}  ${((inp.tUs - q.sinceUs) / 1e6).toFixed(0)} s`, x + 12, y + 14)
       ctx.textAlign = 'right'; ctx.fillStyle = C.muted; ctx.fillText(`${q.devs} dev${q.latencyMs != null ? `  answer +${q.latencyMs.toFixed(0)} ms` : ''}`, x + tw - 12, y + 14); ctx.textAlign = 'left'
+      if (inp.lastIndex && inp.lastIndex.value != null) {
+        const li = inp.lastIndex, lv = li.value!
+        const gx = x, gy = y + 52, gw = tw
+        panel(ctx, gx, gy, gw, 22)
+        ctx.fillStyle = C.muted; ctx.font = mono(10); ctx.fillText(`last answer Q${li.id.replace(/^q/, '')}  cue index`, gx + 12, gy + 11)
+        const col = lv < 40 ? C.cool : lv < 55 ? C.muted : lv < 70 ? C.accent : C.warn
+        ctx.fillStyle = C.line; ctx.fillRect(gx + 150, gy + 8, gw - 230, 6)
+        ctx.fillStyle = col; ctx.fillRect(gx + 150, gy + 8, (gw - 230) * (lv / 100), 6)
+        ctx.textAlign = 'right'; ctx.fillStyle = col; ctx.fillText(`${lv.toFixed(0)} ${li.band}`, gx + gw - 12, gy + 11); ctx.textAlign = 'left'
+      }
       ctx.fillStyle = C.text; ctx.font = sans(13); ctx.fillText(txt, x + 12, y + 36)
     } else {
       const bx = w / 2 - 70, by = 12

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { LmEvent, SessionDetail } from '../lib/types'
+  import CueGauge from './CueGauge.svelte'
   let { detail, events }: { detail: SessionDetail; events: LmEvent[] } = $props()
   const narrative = $derived((detail.analysis?.narrative ?? []) as string[])
   const contributors = $derived.by(() => {
@@ -61,6 +62,9 @@
       <div class="chips">{#each exprCounts as [name, n] (name)}<span class="chip expr">{name} <b class="mono">{n}</b></span>{/each}</div>
       <div class="muted small-note">{briefCount} brief (under 500 ms): candidates for what the microexpression literature studies, unconfirmed.</div>
     {:else}<div class="muted">none matched a FACS prototype</div>{/if}
+    {#if cues?.index}
+      <div class="gauge-wrap"><CueGauge index={cues.index} /></div>
+    {/if}
     {#if cues}
       <div class="eyebrow cues-hdr">deception-research cues (checklist, not a probability)</div>
       <div class="mono cue-sum">{cues.summary}</div>
@@ -95,6 +99,7 @@
   .chip { border: 1px solid var(--line-strong); padding: 1px 8px; border-radius: 10px; font-size: 11.5px; }
   .chip.expr { border-color: var(--violet); color: var(--violet); }
   .cues-hdr { margin-top: 12px; }
+  .gauge-wrap { margin-top: 10px; padding: 10px 12px; background: var(--panel-2); border-left: 2px solid var(--line-strong); }
   .cue-sum { font-size: 11.5px; margin: 4px 0; }
   .cues { list-style: none; margin: 0; padding: 0; font-size: 11.5px; }
   .cues li { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 8px; align-items: center; padding: 2px 0; color: var(--muted); }

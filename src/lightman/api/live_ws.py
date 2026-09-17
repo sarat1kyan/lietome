@@ -159,6 +159,23 @@ async def live_endpoint(
                             json.dumps({"type": "error", "detail": f"bad marker: {exc}"})
                         )
                         continue
+                    prev_open = (
+                        marker.kind == "question"
+                        and any(m.kind == "question" for m in analyzer.markers)
+                        and not any(
+                            m.kind == "end"
+                            and m.t_us
+                            > max(
+                                (x.t_us for x in analyzer.markers if x.kind == "question"),
+                                default=0,
+                            )
+                            for m in analyzer.markers
+                        )
+                    )
+                    if marker.kind == "end" or prev_open:
+                        qsum = await to_thread.run_sync(analyzer.question_summary, marker.t_us)
+                        if qsum is not None:
+                            await ws.send_text(json.dumps(qsum))
                     analyzer.add_marker(marker)
                     await ws.send_text(
                         json.dumps({"type": "marked", "id": marker.id, "t_us": marker.t_us})

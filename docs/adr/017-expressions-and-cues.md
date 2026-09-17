@@ -21,6 +21,9 @@ humor and effort (Barrett et al. 2019 review); deception cues in meta-analyses a
    shown with its published effect size and source. Output is "k of n cues present" with the
    caveat attached. Not an Event, never a probability, never a verdict.
 
+**Amended by ADR-021:** a cue index worded as possibility, with reliability and counters shown,
+is allowed; the probability wording stays rejected.
+
 **Rejected.** Emotion labels ("angry", "happy") as facts; any per-question "deception
 likelihood"; hiding the effect sizes; a learned deception classifier (no licensed data,
 no validated generalization; see scientific-limitations.md).

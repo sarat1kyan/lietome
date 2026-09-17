@@ -65,6 +65,7 @@ class QuestionSummary(BaseModel):
     score: float = Field(description="deviations_per_min + max_severity; a descriptive score only")
     expression_patterns: list[str] = Field(default_factory=list)
     cues: dict[str, Any] | None = None
+    cue_index: dict[str, Any] | None = None
 
 
 class ProtocolSummary(BaseModel):
@@ -78,6 +79,7 @@ class ProtocolSummary(BaseModel):
     ground_truth: dict[str, Any]
     notes: list[str]
     session_cues: dict[str, Any] | None = None
+    possibility: dict[str, Any] | None = None
 
 
 def _speech_onsets(
@@ -226,11 +228,15 @@ def summarize_protocol(
                         reference_blink_rate=cue_inputs.get("reference_blink_rate"),
                         response_latency_ms=r.response_latency_ms,
                         control_latency_ms=ctrl_mean if r.category != "control" else None,
+                        events=events,
+                        state_baselines=cue_inputs.get("state_baselines"),
+                        frame_state=cue_inputs.get("frame_state"),
                     )
                 }
             )
             for r in out
         ]
+        out = [r.model_copy(update={"cue_index": (r.cues or {}).get("index")}) for r in out]
     by_cat: dict[str, dict[str, float | int | None]] = {}
     for cat in ("control", "relevant", "neutral"):
         rows = [r for r in out if r.category == cat]
@@ -302,6 +308,9 @@ def summarize_protocol(
             reference_blink_rate=cue_inputs.get("reference_blink_rate"),
             response_latency_ms=None,
             control_latency_ms=None,
+            events=events,
+            state_baselines=cue_inputs.get("state_baselines"),
+            frame_state=cue_inputs.get("frame_state"),
         )
     return ProtocolSummary(
         markers=markers,
@@ -311,7 +320,70 @@ def summarize_protocol(
         ground_truth=gt,
         notes=notes,
         session_cues=session_cues,
+        possibility=possibility_summary(out),
     )
+
+
+def possibility_summary(questions: list[QuestionSummary]) -> dict[str, Any] | None:
+    """Relevant-vs-control view of the cue index. Wording stays at "possibility"; the
+    numbers are shares of weak cues, never probabilities."""
+    rows = [
+        (q, q.cue_index["value"]) for q in questions if q.cue_index and q.cue_index.get("value")
+    ]
+    if not rows:
+        return None
+    rel = [v for q, v in rows if q.category == "relevant"]
+    ctl = [v for q, v in rows if q.category == "control"]
+    top_q, top_v = max(rows, key=lambda qv: qv[1])
+    per_q = [
+        {
+            "id": q.id,
+            "category": q.category,
+            "index": v,
+            "band": q.cue_index["band"] if q.cue_index else None,
+            "drivers": (q.cue_index or {}).get("drivers", []),
+        }
+        for q, v in rows
+    ]
+    out: dict[str, Any] = {
+        "per_question": per_q,
+        "mean_relevant": round(float(np.mean(rel)), 1) if rel else None,
+        "mean_control": round(float(np.mean(ctl)), 1) if ctl else None,
+        "delta": round(float(np.mean(rel) - np.mean(ctl)), 1) if rel and ctl else None,
+        "top_question": top_q.id,
+        "top_index": top_v,
+        "top_band": top_q.cue_index["band"] if top_q.cue_index else None,
+    }
+    parts = []
+    if rel and ctl:
+        d = out["delta"]
+        parts.append(
+            f"Relevant questions averaged a cue index of {out['mean_relevant']:.0f} against "
+            f"{out['mean_control']:.0f} for control questions ({d:+.0f})."
+        )
+        if d is not None and d >= 10:
+            parts.append(
+                "The relevant answers carried more lie-associated cues than this person's own "
+                "control answers: a possibility worth a follow-up question, not a finding."
+            )
+        elif d is not None and d <= -10:
+            parts.append("Control answers carried more cues than relevant ones; no pattern.")
+        else:
+            parts.append("No meaningful difference between question types.")
+    parts.append(
+        f"Highest: Q{top_q.id.lstrip('q')} ({top_v:.0f}/100, {out['top_band']})"
+        + (
+            ": " + ", ".join((top_q.cue_index or {}).get("drivers", [])[:3])
+            if (top_q.cue_index or {}).get("drivers")
+            else ""
+        )
+        + "."
+    )
+    parts.append(
+        "Published accuracy of all such cues combined is about 54-60%; this is not a probability."
+    )
+    out["text"] = " ".join(parts)
+    return out
 
 
 def parse_question_script(text: str) -> list[dict[str, str | None]]:

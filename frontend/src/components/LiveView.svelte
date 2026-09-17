@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import { tc } from '../lib/api'
-  import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg } from '../lib/live'
+  import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg, type LiveQuestionSummaryMsg } from '../lib/live'
+  import CueGauge from './CueGauge.svelte'
   import { CALIBRATION_SECONDS, PASSAGE, phaseAt } from '../lib/calibration'
   import { DEFAULT_SCRIPT, parseScript, type ScriptQuestion } from '../lib/protocol'
   import { drawHud, type Flash } from '../lib/hud'
@@ -35,6 +36,8 @@
   let laneBase = $state<Record<string, { center: number; scale: number }>>({})
   let flashes: Flash[] = []
   let ticker = $state<string | null>(null)
+  let answers = $state<LiveQuestionSummaryMsg[]>([])
+  const lastAnswer = $derived(answers.length ? answers[answers.length - 1] : null)
   const FLASH_TYPES = new Set(['episode', 'expression_pattern', 'blink_rate_change', 'head_gesture', 'au_novelty', 'pulse_change', 'gaze_away'])
   let pulseHold = $state<{ bpm: number; snr_db: number; usable: boolean } | null>(null)
   let tally = $state<Record<string, number>>({})
@@ -124,6 +127,9 @@
       laneBase = m.signals
     } else if (m.type === 'session') {
       sessionId = m.session_id
+    } else if (m.type === 'question_summary') {
+      answers = [...answers.filter((a) => a.id !== m.id), m]
+      ticker = `Q${m.id.replace(/^q/, '')} cue index ${m.index.value == null ? 'n/a' : Math.round(m.index.value)} (${m.index.band})`
     }
   }
 
@@ -158,6 +164,7 @@
       windowUs: 30e6,
       question: currentQ ? { id: currentQ.q.id, text: currentQ.q.text, category: currentQ.q.category, sinceUs: currentQ.t_us, devs: currentQ.devs, latencyMs: currentQ.latency_ms } : null,
       phase: calib ? calib.name : null,
+      lastIndex: lastAnswer ? { id: lastAnswer.id, value: lastAnswer.index.value, band: lastAnswer.index.band } : null,
       ticker: m.baseline_ready ? ticker : null,
       full: showOverlay,
     })
@@ -223,7 +230,7 @@
 
   async function start() {
     if (!videoEl) return
-    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null; ticker = null
+    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null; ticker = null; answers = []
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
       au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72,
@@ -295,9 +302,17 @@
               <button onclick={endAnswer} disabled={!currentQ}>end answer</button>
             </div>
             <div class="note-row"><input placeholder="note at current time" bind:value={noteText} onkeydown={(e) => e.key === 'Enter' && addNote()} /><button onclick={addNote}>add</button></div>
+            {#if lastAnswer}
+              <div class="answer">
+                <div class="tiny mono muted">last answer Q{lastAnswer.id.replace(/^q/, '')} ({lastAnswer.category}){lastAnswer.response_latency_ms != null ? `, answered after ${lastAnswer.response_latency_ms.toFixed(0)} ms` : ''}: {lastAnswer.deviations} deviations, {lastAnswer.episodes} episodes{lastAnswer.expression_patterns.length ? `, ${lastAnswer.expression_patterns.slice(0, 3).join(', ')}` : ''}</div>
+                <CueGauge index={lastAnswer.index} control={lastAnswer.control_mean_index} compact />
+                {#if lastAnswer.index.drivers.length}<div class="tiny">moved with lying: {lastAnswer.index.drivers.join(', ')}</div>{/if}
+                {#if lastAnswer.index.counters.length}<div class="tiny muted">moved against: {lastAnswer.index.counters.join(', ')}</div>{/if}
+              </div>
+            {/if}
             {#if asked.length}
               <ol class="asked">
-                {#each asked as a (a.q.id)}<li class:rel={a.q.category === 'relevant'}><span class="mono">{tc(a.t_us).slice(3)}</span> {a.q.text.slice(0, 40)}{a.q.text.length > 40 ? '...' : ''} <span class="mono muted">{a.devs}</span></li>{/each}
+                {#each asked as a (a.q.id)}{@const ans = answers.find((x) => x.id === a.q.id)}<li class:rel={a.q.category === 'relevant'}><span class="mono">{tc(a.t_us).slice(3)}</span> {a.q.text.slice(0, 40)}{a.q.text.length > 40 ? '...' : ''} <span class="mono muted">{a.devs}</span>{#if ans && ans.index.value != null}<span class="mono idx" class:hot={ans.index.value >= 55}>{Math.round(ans.index.value)}</span>{/if}</li>{/each}
               </ol>
             {/if}
           {/if}
@@ -366,4 +381,7 @@
   .tally { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
   .tally b { color: var(--text); font-weight: 500; }
   .tally .zero { opacity: 0.55; }
+  .answer { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .idx { margin-left: 6px; color: var(--muted); }
+  .idx.hot { color: var(--accent); }
 </style>

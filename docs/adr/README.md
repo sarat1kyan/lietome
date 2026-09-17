@@ -25,3 +25,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 018 | Exclusion AUs in prototypes, per-signal event rules, frame readout | accepted |
 | 019 | Camera pulse estimate, head gestures, unfamiliar AU pairings | accepted |
 | 020 | Gaze-away episodes, live speech rate, span comparison, on-video HUD | accepted |
+| 021 | Possibility-of-deception cue index, extended live expression patterns | accepted |
