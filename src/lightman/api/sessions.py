@@ -57,6 +57,7 @@ class SessionStore:
             out.append(
                 {
                     "session_id": d.name,
+                    "subject_id": (m.get("subject_ids") or [None])[0],
                     "created_utc": m.get("created_utc"),
                     "mode": a.get("mode", "prerecorded"),
                     "media_name": m.get("media", {}).get("path_name"),

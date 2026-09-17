@@ -1,5 +1,6 @@
 export interface SessionSummary {
   session_id: string
+  subject_id?: string | null
   created_utc: string | null
   mode: string
   media_name: string | null
