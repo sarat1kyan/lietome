@@ -27,7 +27,23 @@ export function parseScript(text: string): ScriptQuestion[] {
   return out
 }
 
+// Validation card game: every R question can be answered either way. In blind validation mode
+// the app decides truth or lie per question and shows it only on the subject screen.
+export const VALIDATION_SCRIPT = `N: Tell me how your day has been so far.
+C: Is your first name the one you use every day?
+R: Did you drink coffee today?
+C: Are you sitting down right now?
+R: Have you ever been to Paris?
+R: Do you have a sibling?
+C: Is it daytime where you are?
+R: Did you eat meat yesterday?
+R: Have you ever broken a bone?
+C: Can you hear me clearly?
+R: Do you own a bicycle?
+R: Did you watch a film this week?`
+
 export const SCRIPT_TEMPLATES: { name: string; text: string }[] = [
+  { name: 'validation card game (blind)', text: VALIDATION_SCRIPT },
   { name: 'default mix', text: DEFAULT_SCRIPT },
   { name: 'baseline truths first', text: `C: What is your full name?
 C: What city do you live in?

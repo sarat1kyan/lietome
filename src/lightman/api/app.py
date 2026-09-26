@@ -8,6 +8,7 @@ is deleted after analysis. No absolute paths are returned.
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 import threading
@@ -24,6 +25,7 @@ from lightman import __version__
 from lightman.api.live_ws import AUFactory, LandmarkerFactory, live_endpoint
 from lightman.api.security import TokenMiddleware, is_local_client, token_ok, ws_token
 from lightman.api.sessions import SessionNotFoundError, SessionStore
+from lightman.api.subject import SubjectHub
 from lightman.config import LightmanConfig
 from lightman.core.errors import LightmanError
 from lightman.core.logging import get_logger
@@ -71,6 +73,7 @@ def create_app(
     from lightman.pipeline.analyze import default_au_factory, default_landmarker_factory
 
     lm_factory = landmarker_factory or default_landmarker_factory
+    hub = SubjectHub()
     au_fact = au_factory or default_au_factory
     jobs = JobRegistry()
     app = FastAPI(title="Lightman", version=__version__, docs_url="/api/docs", redoc_url=None)
@@ -116,6 +119,12 @@ def create_app(
     ) -> dict[str, Any]:
         wanted = [s for s in signals.split(",") if s]
         return store.features(session_id, table=table, signals=wanted, max_points=max_points)
+
+    @app.get("/api/subjects/{subject}/validation")
+    def get_validation(subject: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", subject):
+            raise HTTPException(status_code=422, detail="invalid subject id")
+        return store.validation(subject)
 
     @app.get("/api/sessions/{session_id}/share", response_class=HTMLResponse)
     def get_share(session_id: str) -> HTMLResponse:
@@ -231,7 +240,16 @@ def create_app(
             output_root=output_root,
             landmarker_factory=lm_factory,
             au_factory=au_fact,
+            subject_hub=hub,
         )
+
+    @app.websocket("/api/subject")
+    async def subject_screen(ws: WebSocket) -> None:
+        local = is_local_client(ws.client.host if ws.client else None, ws.headers)
+        if token and not local and not token_ok(ws_token(ws), token):
+            await ws.close(code=4401)
+            return
+        await hub.serve(ws)
 
     static_dir = Path(str(resources.files("lightman.api").joinpath("static")))
     if (static_dir / "index.html").is_file():

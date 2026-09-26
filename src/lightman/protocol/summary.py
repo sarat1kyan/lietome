@@ -119,6 +119,33 @@ def _permutation_p(
     return (count + 1) / (iters + 1)
 
 
+def auroc_ci(
+    scores: list[float], labels: list[int], *, iters: int = 2000, seed: int = 11
+) -> dict[str, Any]:
+    """AUROC with a stratified bootstrap 95% interval (items resampled within each class)."""
+    a = _auroc(scores, labels)
+    pos = [s for s, y in zip(scores, labels, strict=True) if y == 1]
+    neg = [s for s, y in zip(scores, labels, strict=True) if y == 0]
+    out: dict[str, Any] = {"auroc": a, "ci95": None, "n_lie": len(pos), "n_truth": len(neg)}
+    if a is None:
+        return out
+    rng = np.random.default_rng(seed)
+    boots = []
+    for _ in range(iters):
+        p = list(rng.choice(pos, len(pos)))
+        q = list(rng.choice(neg, len(neg)))
+        b = _auroc(p + q, [1] * len(p) + [0] * len(q))
+        if b is not None:
+            boots.append(b)
+    if boots:
+        out["ci95"] = [
+            round(float(np.percentile(boots, 2.5)), 3),
+            round(float(np.percentile(boots, 97.5)), 3),
+        ]
+    out["auroc"] = round(a, 3)
+    return out
+
+
 def _auroc(scores: list[float], labels: list[int]) -> float | None:
     pos = [s for s, y in zip(scores, labels, strict=True) if y == 1]
     neg = [s for s, y in zip(scores, labels, strict=True) if y == 0]
@@ -305,10 +332,20 @@ def summarize_protocol(
     if labeled:
         labels = [1 if r.expected == "lie" else 0 for r in labeled]
         scores = [r.score for r in labeled]
+        by_score: dict[str, Any] = {"deviation_score": auroc_ci(scores, labels)}
+        for key in ("cue_index", "control_index"):
+            pairs = [
+                (float(getattr(r, key)["value"]), 1 if r.expected == "lie" else 0)
+                for r in labeled
+                if getattr(r, key) and getattr(r, key).get("value") is not None
+            ]
+            if pairs:
+                by_score[key] = auroc_ci([p[0] for p in pairs], [p[1] for p in pairs])
         gt = {
             "n_truth": labels.count(0),
             "n_lie": labels.count(1),
             "auroc": _auroc(scores, labels),
+            "by_score": by_score,
             "score_definition": "deviations_per_min + max_severity within the answer window",
             "note": (
                 "Experimental. AUROC of a descriptive deviation score against the operator's "

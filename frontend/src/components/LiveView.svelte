@@ -63,18 +63,29 @@
     watchBpm = ''
   }
   let speakingAtAsk: boolean | null = null
+  let blind = $state(true)
+  let subjectScreens = $state(0)
+  let lastSubjectSent = 0
+  const validation = $derived(template.startsWith('validation'))
+  function subjectState(s: Record<string, unknown>) { session?.sendSubject(s) }
   const currentQ = $derived(qIndex >= 0 && qIndex < asked.length ? asked[qIndex] : null)
   function askNext() {
     if (!last || qIndex + 1 >= questions.length) return
-    const q = questions[qIndex + 1]
+    const base = questions[qIndex + 1]
+    // blind validation: the app decides truth or lie for each relevant question; only the
+    // subject screen shows it, the operator sees it after the session
+    const expected = validation && blind ? (base.category === 'relevant' ? (Math.random() < 0.5 ? 'lie' : 'truth') : 'truth') : base.expected
+    const q = { ...base, expected }
     qIndex += 1
     asked = [...asked, { q, t_us: last.t_us, devs: 0, latency_ms: null }]
     speakingAtAsk = audioLast ? audioLast.speech_prob >= 0.5 : null
     session?.mark({ kind_of: 'question', id: q.id, text: q.text, category: q.category, expected: q.expected, t_us: last.t_us })
+    subjectState({ status: 'question', question: { id: q.id, text: q.text, number: String(qIndex + 1) }, card: validation && blind ? (expected === 'lie' ? 'LIE on this answer' : 'Tell the TRUTH') : null })
   }
   function endAnswer() {
     if (!last || !currentQ) return
     session?.mark({ kind_of: 'end', t_us: last.t_us })
+    subjectState({ status: 'waiting' })
   }
   function addNote() {
     if (!last || !noteText.trim()) return
@@ -111,8 +122,13 @@
         const ph = phaseAt(m.t_us / 1e6)
         calib = ph ? { name: ph.phase.name, instruction: ph.phase.instruction, remaining: ph.remaining, speaking: ph.phase.speaking } : { name: 'finishing', instruction: 'Hold on, computing the baseline.', remaining: 0, speaking: false }
         if (ph && ph.phase.speaking !== lastPhaseSpeaking) { lastPhaseSpeaking = ph.phase.speaking; session?.setPhase(ph.phase.speaking) }
+        if (performance.now() - lastSubjectSent > 1000) {
+          lastSubjectSent = performance.now()
+          subjectState(ph ? { status: 'calibrating', phase: ph.phase.name, instruction: ph.phase.instruction, passage: ph.phase.speaking && ph.phase.name === 'read' ? PASSAGE : null, remaining_s: ph.remaining } : { status: 'calibrating', phase: 'finishing', instruction: 'Hold on a moment.' })
+        }
       } else if (calib) {
         calib = null
+        subjectState({ status: 'waiting' })
       }
       for (const n of LANES) push(n, m.t_us, m.values[n])
       drawOverlay(m); drawLanes(m.t_us)
@@ -141,6 +157,8 @@
       laneBase = m.signals
     } else if (m.type === 'session') {
       sessionId = m.session_id
+    } else if (m.type === 'subject_screens') {
+      subjectScreens = m.n
     } else if (m.type === 'question_summary') {
       answers = [...answers.filter((a) => a.id !== m.id), m]
       ticker = `Q${m.id.replace(/^q/, '')} cue index ${m.index.value == null ? 'n/a' : Math.round(m.index.value)} (${m.index.band})`
@@ -255,7 +273,7 @@
     })
     try { await session.start(camera || undefined) } catch (e) { state = 'error'; detail = String(e) }
   }
-  function stop() { session?.stop() }
+  function stop() { subjectState({ status: 'done' }); session?.stop() }
   onDestroy(() => session?.stop())
 </script>
 
@@ -302,6 +320,8 @@
         <div class="proto">
           <div class="eyebrow">interview protocol</div>
           {#if state !== 'running'}
+            <div class="tiny muted subj-link">subject screen: open <span class="mono">{location.origin}{location.pathname}#subject</span> on a second device or window{subjectScreens ? ` (${subjectScreens} connected)` : ''}{location.hostname !== 'localhost' && location.hostname !== '127.0.0.1' ? '; on another device use the token link plus #subject' : ''}</div>
+            {#if validation}<label class="tiny"><input type="checkbox" bind:checked={blind} disabled={state === 'running'} /> blind: the app assigns truth or lie per relevant question, shown only on the subject screen</label>{/if}
             <div class="tpl">
               <select bind:value={template} onchange={applyTemplate}>{#each SCRIPT_TEMPLATES as t (t.name)}<option value={t.name}>{t.name}</option>{/each}</select>
               <button onclick={() => (script = shuffleScript(script))} title="shuffle question order, first line stays">shuffle</button>
@@ -339,7 +359,7 @@
             {/if}
             {#if asked.length}
               <ol class="asked">
-                {#each asked as a (a.q.id)}{@const ans = answers.find((x) => x.id === a.q.id)}<li class:rel={a.q.category === 'relevant'}><span class="mono">{tc(a.t_us).slice(3)}</span> {a.q.text.slice(0, 40)}{a.q.text.length > 40 ? '...' : ''} <span class="mono muted">{a.devs}</span>{#if ans && ans.index.value != null}<span class="mono idx" class:hot={ans.index.value >= 55}>{Math.round(ans.index.value)}</span>{/if}</li>{/each}
+                {#each asked as a (a.q.id)}{@const ans = answers.find((x) => x.id === a.q.id)}<li class:rel={a.q.category === 'relevant'}><span class="mono">{tc(a.t_us).slice(3)}</span> {a.q.text.slice(0, 40)}{a.q.text.length > 40 ? '...' : ''} <span class="mono muted">{a.devs}</span>{#if validation && blind}<span class="mono tiny muted">{state === 'running' ? ' ?' : ` ${a.q.expected}`}</span>{/if}{#if ans && ans.index.value != null}<span class="mono idx" class:hot={ans.index.value >= 55}>{Math.round(ans.index.value)}</span>{/if}</li>{/each}
               </ol>
             {/if}
           {/if}
@@ -426,4 +446,5 @@
   .watch { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
   .watch input { width: 64px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--text); padding: 2px 6px; font: 12px var(--font-data); }
   .watch button { padding: 1px 8px; font-size: 11px; }
+  .subj-link { margin: 4px 0; overflow-wrap: anywhere; }
 </style>

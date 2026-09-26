@@ -40,7 +40,9 @@
     {#if cvr.delta_deviations_per_min != null}
       <span>relevant minus control: <b class="mono">{cvr.delta_deviations_per_min >= 0 ? '+' : ''}{f(cvr.delta_deviations_per_min, 1)}</b> dev/min{#if cvr.delta_latency_ms != null}, <b class="mono">{cvr.delta_latency_ms >= 0 ? '+' : ''}{f(cvr.delta_latency_ms)}</b> ms latency{/if}{#if cvr.permutation_p_deviations != null}, permutation p <b class="mono">{f(cvr.permutation_p_deviations, 2)}</b>{/if} (n {cvr.n_control} control, {cvr.n_relevant} relevant)</span>
     {/if}
-    {#if gt.auroc != null}
+    {#if gt.by_score}
+      <span>discrimination of the instructed lies: {#each Object.entries(gt.by_score) as [k, r] (k)}{@const rr = r as any}<b class="mono">{k.replace('_', ' ')} {rr.auroc ?? '-'}</b>{rr.ci95 ? ` (95% ${rr.ci95[0]} to ${rr.ci95[1]})` : ''}; {/each}0.5 = chance.</span>
+    {:else if gt.auroc != null}
       <span>expected-class discrimination: AUROC <b class="mono">{f(gt.auroc, 2)}</b> over {gt.n_truth} truth / {gt.n_lie} lie items (0.5 = chance). experimental, one person, one session.</span>
     {/if}
     {#each notes as n}<span class="note">{n}</span>{/each}

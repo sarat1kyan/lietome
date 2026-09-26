@@ -29,3 +29,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 022 | Stillness, live pauses, microexpression tier, subject history, capture coaching | accepted |
 | 023 | Fixes from the first outside test sessions; localhost access | accepted |
 | 024 | Control-referenced scoring, personal norms, pulse check, shareable report | accepted |
+| 025 | Subject screen and the blind validation game | accepted |
