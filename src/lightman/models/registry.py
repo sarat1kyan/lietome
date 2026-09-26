@@ -44,6 +44,8 @@ class ModelEntry(BaseModel):
     input: str = ""
     output: str = ""
     notes: str = ""
+    group: str | None = None
+    """Files of one multi-file model share this cache directory (e.g. a Whisper checkpoint)."""
 
 
 def default_cache_dir() -> Path:
@@ -85,7 +87,17 @@ class ModelRegistry:
 
     def local_path(self, model_id: str) -> Path:
         entry = self.get(model_id)
-        return self.cache_dir / model_id.replace("/", "__") / entry.filename
+        folder = entry.group or model_id.replace("/", "__")
+        return self.cache_dir / folder / entry.filename
+
+    def ensure_group(self, group: str) -> Path:
+        """Ensure every file of a multi-file model; return their shared directory."""
+        members = [e for e in self.entries() if e.group == group]
+        if not members:
+            raise ModelError(f"unknown model group {group}")
+        for e in members:
+            self.ensure(e.model_id)
+        return self.cache_dir / group
 
     def is_cached(self, model_id: str) -> bool:
         return self.local_path(model_id).is_file()

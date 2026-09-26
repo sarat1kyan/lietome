@@ -31,3 +31,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 024 | Control-referenced scoring, personal norms, pulse check, shareable report | accepted |
 | 025 | Subject screen and the blind validation game | accepted |
 | 026 | Upper body and hands, per-machine benchmark, automatic live AU model | accepted |
+| 027 | Local speech-to-text with word timing; opt-in recording and replay | accepted |

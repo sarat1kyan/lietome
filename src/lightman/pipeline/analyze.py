@@ -235,6 +235,7 @@ def analyze_video(
     au_factory: AUDetectorFactory | None = None,
     vad_factory: VADFactory | None = None,
     pose_factory: Any = None,
+    transcriber_factory: Any = None,
     registry: ModelRegistry | None = None,
     subject_id: str = "subject_001",
 ) -> AnalysisResult:
@@ -785,6 +786,39 @@ def analyze_video(
             },
         )
         outputs.append(_artifact(pulse_path, "json"))
+    if cfg.speech.enabled and media.has_audio and cfg.audio.enabled:
+        from lightman.media.audio import load_audio_mono
+        from lightman.speech.transcribe import default_transcriber, transcribe_session
+
+        ts0 = time.perf_counter()
+        try:
+            tr = (transcriber_factory or default_transcriber)(cfg, registry)
+            if tr is not None:
+                pcm, first_us = load_audio_mono(media_path, limits=cfg.limits)
+            else:
+                pcm, first_us = np.zeros(0, dtype=np.float32), 0
+            doc = transcribe_session(
+                session_dir, pcm, first_us - (origin_us or 0), tr, language=cfg.speech.language
+            )
+            summary["transcript"] = {k: doc.get(k) for k in ("status", "language", "reason")} | {
+                "words": len(doc.get("words", [])),
+                "hedges": sum(1 for m in doc.get("markers", []) if m["kind"] == "hedge"),
+                "denials": sum(1 for m in doc.get("markers", []) if m["kind"] == "denial"),
+                "denial_moments": len(doc.get("denial_moments", [])),
+            }
+            if (session_dir / "transcript.json").is_file():
+                outputs.append(_artifact(session_dir / "transcript.json", "json"))
+            t = summary["transcript"]
+            if t.get("status") == "done":
+                summary["narrative"].insert(
+                    -1,
+                    f"Transcript: {t['words']} words ({t.get('language') or '?'}), {t['hedges']} "
+                    f"hedges and {t['denials']} denials; {t['denial_moments']} denials came with a "
+                    "face or body change within one second.",
+                )
+        except LightmanError as exc:
+            log.warning("transcription_failed", error=str(exc))
+        timing["speech_ms"] = (time.perf_counter() - ts0) * 1000
     analysis_path = session_dir / "analysis.json"
     summary["timing_ms"] = timing
     _write_json(analysis_path, _nan_to_none(summary))

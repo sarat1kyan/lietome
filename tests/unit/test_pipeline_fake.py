@@ -10,7 +10,14 @@ import pyarrow.parquet as pq
 import pytest
 
 from lightman import __version__
-from lightman.config import BaselineConfig, BodyConfig, EventsConfig, LightmanConfig, ModelsConfig
+from lightman.config import (
+    BaselineConfig,
+    BodyConfig,
+    EventsConfig,
+    LightmanConfig,
+    ModelsConfig,
+    SpeechConfig,
+)
 from lightman.face.base import FaceObservation
 from lightman.features.action_units import OPENGRAPHAU_NAMES
 from lightman.features.blendshapes import BLENDSHAPE_NAMES
@@ -138,6 +145,7 @@ def cfg() -> LightmanConfig:
         events=EventsConfig(),
         models=ModelsConfig(allow_download=False),
         body=BodyConfig(enabled=False),
+        speech=SpeechConfig(enabled=False),
     )
 
 

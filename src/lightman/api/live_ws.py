@@ -13,6 +13,7 @@ import contextlib
 import functools
 import json
 import struct
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -72,6 +73,29 @@ def _decode_jpeg(buf: bytes) -> np.ndarray:
     if bgr is None:
         raise LightmanError("undecodable frame")
     return np.ascontiguousarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), dtype=np.uint8)
+
+
+def start_transcription(
+    session_dir: Path, pcm: Any, origin_us: int, cfg: LightmanConfig, registry: ModelRegistry
+) -> threading.Thread:
+    """Transcribe in a background thread; the UI polls transcript.json (status pending/done)."""
+    from lightman.speech.transcribe import default_transcriber, transcribe_session
+
+    (session_dir / "transcript.json").write_text(json.dumps({"status": "pending"}))
+
+    def work() -> None:
+        try:
+            tr = default_transcriber(cfg, registry)
+            transcribe_session(session_dir, pcm, origin_us, tr, language=cfg.speech.language)
+        except Exception as exc:
+            log.warning("transcription_failed", error=str(exc))
+            (session_dir / "transcript.json").write_text(
+                json.dumps({"status": "failed", "reason": type(exc).__name__})
+            )
+
+    t = threading.Thread(target=work, name=f"transcribe-{session_dir.name}", daemon=True)
+    t.start()
+    return t
 
 
 def _events_payload(events: list[Event]) -> dict[str, Any]:
@@ -377,6 +401,9 @@ async def live_endpoint(
             )
             with contextlib.suppress(Exception):  # client may already be gone
                 await ws.send_text(json.dumps({"type": "session", "session_id": session_dir.name}))
+            if audio is not None and cfg.speech.enabled:
+                pcm, origin = audio.session_pcm()
+                start_transcription(session_dir, pcm, origin, cfg, registry)
         if landmarker is not None:
             landmarker.close()
         if au is not None:
