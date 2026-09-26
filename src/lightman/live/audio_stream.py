@@ -23,6 +23,7 @@ from lightman.schema import Event
 from lightman.schema.events import EvidenceLevel, FeatureContribution
 
 VOICED_ENERGY_FLOOR_DB = -50.0
+MAX_KEPT_SAMPLES = RATE * 60 * 45  # 45 min of int16 audio (~86 MB) for transcription
 RATE_WINDOW_HOPS = 100  # 2 s of 20 ms hops for the speech-rate proxy
 RATE_MIN_SPEECH_FRACTION = 0.6
 
@@ -62,6 +63,11 @@ class StreamingAudioAnalyzer:
         self._energy_hist: list[float] = []
         self._speech_hist: list[bool] = []
         self._last_speech_us: int | None = None
+        self.keep_pcm = True
+        """Keep the session audio in memory (int16) for transcription at the end."""
+        self._pcm: list[npt.NDArray[np.int16]] = []
+        self._pcm_samples = 0
+        self.pcm_origin_us: int | None = None
         self._in_speech = False
         self._pause_k = 900_000
         self.detector: StreamingDeviationDetector | None = None
@@ -74,6 +80,12 @@ class StreamingAudioAnalyzer:
     def push(self, pcm: npt.NDArray[np.float32], t_us: int) -> list[AudioFrameResult]:
         """Append samples whose first sample occurs at ``t_us``; return per-hop results."""
         pcm = np.asarray(pcm, dtype=np.float32).reshape(-1)
+        if self.keep_pcm and self._pcm_samples < MAX_KEPT_SAMPLES:
+            if self.pcm_origin_us is None:
+                self.pcm_origin_us = t_us
+            chunk = np.clip(pcm, -1.0, 1.0)
+            self._pcm.append((chunk * 32767).astype(np.int16))
+            self._pcm_samples += chunk.size
         if self._buf.size == 0:
             self._buf_t0_us = t_us
         self._buf = np.concatenate([self._buf, pcm])
@@ -244,6 +256,14 @@ class StreamingAudioAnalyzer:
         t = np.array([h[0] for h in self.hops], dtype=np.int64)
         f0 = np.array([h[2] for h in self.hops], dtype=float)
         return t, (f0 - sb.center) / sb.scale
+
+    def session_pcm(self) -> tuple[npt.NDArray[np.float32], int]:
+        """(float32 audio, t_us of its first sample) and release the buffer."""
+        if not self._pcm:
+            return np.zeros(0, dtype=np.float32), 0
+        x = np.concatenate(self._pcm).astype(np.float32) / 32767.0
+        self._pcm = []
+        return x, int(self.pcm_origin_us or 0)
 
     def finish(self) -> list[Event]:
         if self.detector is not None:

@@ -85,7 +85,7 @@ class SessionStore:
                     "baseline_quality": m.get("quality", {}).get("baseline_quality"),
                     "events": events,
                     "has_audio": (d / "audio_features.parquet").is_file(),
-                    "has_media": (d / "media.mp4").is_file(),
+                    "has_media": (d / "media.mp4").is_file() or (d / "media.webm").is_file(),
                 }
             )
         return out
@@ -103,6 +103,8 @@ class SessionStore:
             "protocol.json",
             "state_baselines.json",
             "pulse.json",
+            "transcript.json",
+            "media.json",
         }:
             raise SessionNotFoundError("unknown artifact")
         p = d / name
@@ -421,7 +423,8 @@ class SessionStore:
         raise SessionNotFoundError("no thumbnail")
 
     def media(self, session_id: str) -> Path:
-        p = self._dir(session_id) / "media.mp4"
-        if not p.is_file():
-            raise SessionNotFoundError("no retained media for this session")
-        return p
+        d = self._dir(session_id)
+        for name in ("media.mp4", "media.webm"):
+            if (d / name).is_file():
+                return d / name
+        raise SessionNotFoundError("no retained media for this session")

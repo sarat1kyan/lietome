@@ -37,7 +37,7 @@ export interface LiveErrorMsg { type: 'error'; detail: string }
 export type LiveMsg = LiveFrameMsg | LiveEventsMsg | LiveAudioMsg | LiveSessionMsg | LiveBaselineMsg | LiveBaselineUpdateMsg | LiveErrorMsg | { type: 'ready'; session_id: string } | { type: 'marked'; id: string; t_us: number } | LiveQuestionSummaryMsg | { type: 'subject_screens'; n: number }
 
 export interface LiveOptions {
-  au: boolean; subject?: string;
+  au: boolean; subject?: string; record?: boolean;
   audio: boolean
   fps: number
   width: number
@@ -75,6 +75,11 @@ export class LiveSession {
   private inflight = 0
   private rois: number[][] | null = null
   private t0: number | null = null
+  private recorder: MediaRecorder | null = null
+  private recChunks: Blob[] = []
+  private recStartedAt: number | null = null
+  /** Recording of the camera (and microphone) kept in this browser until the session ends. */
+  recording: Promise<{ blob: Blob; offsetUs: number } | null> | null = null
   private audioCtx: AudioContext | null = null
   private audioNode: ScriptProcessorNode | null = null
   video: HTMLVideoElement
@@ -100,7 +105,7 @@ export class LiveSession {
     }
     this.ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data) as LiveMsg
-      if (m.type === 'ready') { this.t0 = performance.now(); this.opts.onstate('running'); this.loop(); if (this.opts.audio) this.startAudio() }
+      if (m.type === 'ready') { this.t0 = performance.now(); this.opts.onstate('running'); this.loop(); if (this.opts.audio) this.startAudio(); if (this.opts.record) this.startRecording() }
       if (m.type === 'frame') { this.inflight = Math.max(0, this.inflight - 1); if (m.skin_rois !== undefined) this.rois = m.skin_rois ?? null }
       if (m.type === 'error') this.opts.onstate('error', m.detail)
       this.opts.onmessage(m)
@@ -162,6 +167,23 @@ export class LiveSession {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'mark', ...m }))
   }
 
+  private startRecording() {
+    if (!this.stream || typeof MediaRecorder === 'undefined') return
+    const type = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].find((t) => MediaRecorder.isTypeSupported(t))
+    if (!type) return
+    this.recChunks = []
+    this.recorder = new MediaRecorder(this.stream, { mimeType: type, videoBitsPerSecond: 1_500_000 })
+    this.recorder.ondataavailable = (e) => { if (e.data.size) this.recChunks.push(e.data) }
+    let done: (v: { blob: Blob; offsetUs: number } | null) => void = () => {}
+    this.recording = new Promise((r) => (done = r))
+    this.recorder.onstop = () => {
+      const blob = new Blob(this.recChunks, { type: type.split(';')[0] })
+      done(blob.size ? { blob, offsetUs: Math.round(((this.recStartedAt ?? 0) - (this.t0 ?? 0)) * 1000) } : null)
+    }
+    this.recorder.start(1000)
+    this.recStartedAt = performance.now()
+  }
+
   sendSubject(state: Record<string, unknown>) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'subject', state }))
   }
@@ -171,6 +193,7 @@ export class LiveSession {
   }
 
   stop() {
+    if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop()
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'stop' }))
     else this.cleanup()
   }

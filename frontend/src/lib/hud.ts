@@ -44,6 +44,7 @@ export interface HudInput {
   ticker: string | null
   lastIndex: { id: string; value: number | null; band: string } | null
   hints: string[]
+  mode?: 'live' | 'replay'
   serverPatterns: { name: string; score: number; enter: number }[] | null
   body: { shoulders: number[][]; elbows: number[][]; wrists: number[][] } | null
   full: boolean
@@ -157,14 +158,14 @@ export function drawHud(inp: HudInput) {
   {
     const x = 12, y = 12
     panel(ctx, x, y, 236, 74)
-    const rec = Math.floor(inp.now / 600) % 2 === 0
-    ctx.fillStyle = rec ? C.warn : 'rgba(224,107,94,0.35)'; ctx.beginPath(); ctx.arc(x + 14, y + 14, 4.5, 0, Math.PI * 2); ctx.fill()
+    const rec = inp.mode !== 'replay' && Math.floor(inp.now / 600) % 2 === 0
+    ctx.fillStyle = inp.mode === 'replay' ? C.cool : rec ? C.warn : 'rgba(224,107,94,0.35)'; ctx.beginPath(); ctx.arc(x + 14, y + 14, 4.5, 0, Math.PI * 2); ctx.fill()
     ctx.fillStyle = C.text; ctx.font = mono(15); ctx.fillText(tc(inp.tUs), x + 26, y + 14)
     ctx.fillStyle = C.muted; ctx.font = mono(10)
     ctx.fillText(`${inp.stats.analyzed_fps.toFixed(1)} fps  lat ${inp.stats.latency_ms_p50?.toFixed(0) ?? '-'} ms  drop ${inp.stats.frames_dropped}`, x + 12, y + 34)
     const phase = inp.phase ? `calibration: ${inp.phase}` : inp.baselineReady ? 'baseline armed, adapting within bounds' : 'computing baseline'
     ctx.fillStyle = inp.baselineReady ? C.ok : C.cool; ctx.fillText(phase.toUpperCase().slice(0, 36), x + 12, y + 50)
-    ctx.fillStyle = C.faint; ctx.fillText('frames analyzed in memory, not stored', x + 12, y + 64)
+    ctx.fillStyle = C.faint; ctx.fillText(inp.mode === 'replay' ? 'replay: recorded video, saved measurements' : 'frames analyzed in memory, not stored', x + 12, y + 64)
   }
 
   // ---- top-center: question (protocol) or blink/speech chips

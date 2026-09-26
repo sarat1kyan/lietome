@@ -111,6 +111,11 @@ enabled = true
 model = "mediapipe/pose_landmarker_lite"
 stride = 1
 
+[speech]                     # local speech-to-text with word timing (needs the asr extra)
+enabled = true
+model_group = "whisper__base"
+compute_type = "int8"
+
 [storage]
 store_landmarks = false      # 478x3 per frame is large and biometric; off by default
 write_report = true

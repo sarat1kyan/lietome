@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import { tc } from '../lib/api'
+  import { api, tc } from '../lib/api'
   import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg, type LiveQuestionSummaryMsg } from '../lib/live'
   import CueGauge from './CueGauge.svelte'
   import { CALIBRATION_SECONDS, PASSAGE, phaseAt } from '../lib/calibration'
@@ -64,6 +64,8 @@
   }
   let speakingAtAsk: boolean | null = null
   let blind = $state(true)
+  let record = $state(false)
+  let uploadNote = $state('')
   let subjectScreens = $state(0)
   let lastSubjectSent = 0
   const validation = $derived(template.startsWith('validation'))
@@ -157,6 +159,15 @@
       laneBase = m.signals
     } else if (m.type === 'session') {
       sessionId = m.session_id
+      const rec = session?.recording
+      if (rec) {
+        uploadNote = 'saving recording...'
+        rec.then(async (r) => {
+          if (!r) { uploadNote = ''; return }
+          try { await api.uploadRecording(m.session_id, r.blob, r.offsetUs); uploadNote = `recording saved (${(r.blob.size / 1e6).toFixed(1)} MB)` }
+          catch (e) { uploadNote = String(e) }
+        })
+      }
     } else if (m.type === 'subject_screens') {
       subjectScreens = m.n
     } else if (m.type === 'question_summary') {
@@ -268,7 +279,7 @@
     events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null; ticker = null; answers = []; watchLog = []
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
-      au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72, subject: subject.trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32) || 'subject_001',
+      au: useAu, audio: useAudio, record, fps: 15, width: 640, jpegQuality: 0.72, subject: subject.trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32) || 'subject_001',
       onmessage,
       onstate: (s, d) => { state = s; detail = d ?? '' },
     })
@@ -286,6 +297,7 @@
     </select>
     <label><input type="checkbox" bind:checked={useAu} disabled={state === 'running'} /> action units (resnet18)</label>
     <label><input type="checkbox" bind:checked={useAudio} disabled={state === 'running'} /> microphone</label>
+    <label title="keeps a video of this session on this machine so the sessions view can replay it with overlays"><input type="checkbox" bind:checked={record} disabled={state === 'running'} /> record video</label>
     <label class="subj">subject <input type="text" bind:value={subject} disabled={state === 'running' || state === 'connecting'} maxlength="32" spellcheck="false" /></label>
     {#if state === 'running' || state === 'connecting'}
       <button class="primary" onclick={stop}>stop and save</button>
@@ -296,6 +308,7 @@
     <label><input type="checkbox" bind:checked={showOverlay} /> overlays</label>
     <span class="status mono" class:rec={state === 'running'}>{state}{detail ? ': ' + detail : ''}</span>
     {#if sessionId}<button onclick={() => ondone(sessionId!)}>open session {sessionId}</button>{/if}
+    {#if uploadNote}<span class="status mono">{uploadNote}</span>{/if}
   </div>
   <div class="stage">
     <div class="cam">

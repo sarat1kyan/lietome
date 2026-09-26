@@ -44,6 +44,21 @@ export const api = {
     if (demo()) return { n_items: 0 }
     return getJson(`./api/subjects/${encodeURIComponent(subject)}/validation`)
   },
+  async uploadRecording(id: string, blob: Blob, offsetUs: number): Promise<void> {
+    const fd = new FormData()
+    fd.append('file', blob, blob.type.includes('mp4') ? 'recording.mp4' : 'recording.webm')
+    fd.append('offset_us', String(offsetUs))
+    const r = await fetch(`./api/sessions/${id}/media`, { method: 'POST', body: fd })
+    if (!r.ok) throw new Error(`upload failed: ${r.status}`)
+  },
+  async transcript(id: string): Promise<any> {
+    if (demo()) return { status: 'none' }
+    return getJson(`./api/sessions/${id}/transcript`)
+  },
+  async mediaInfo(id: string): Promise<{ file: string; offset_us: number } | null> {
+    if (demo()) return null
+    try { return await getJson(`./api/sessions/${id}/media-info`) } catch { return null }
+  },
   async history(id: string): Promise<History> {
     if (demo()) return { subject_id: 'demo', sessions: [], shifts: [] }
     return getJson(`./api/sessions/${id}/history`)

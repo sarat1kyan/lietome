@@ -32,6 +32,8 @@ uv sync
 uv run lightman models download mediapipe/face_landmarker   # 3.7 MB, SHA-256 verified
 uv run lightman models download opengraphau/resnet50_s2     # 143 MB AU model (or resnet18_s2, 48 MB)
 uv run lightman models download silero/vad_v6               # 2.3 MB voice activity model
+uv sync --extra asr                                          # optional: local speech-to-text (Whisper base, 145 MB on first use)
+uv run lightman bench                                        # time the models on this machine; picks the live AU model
 uv run lightman analyze interview.mp4 -o output/
 ```
 
