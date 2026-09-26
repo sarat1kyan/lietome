@@ -114,6 +114,11 @@ class FrameResult:
     """Capture-quality coaching for the operator (move closer, more light, ...)."""
 
 
+def _snap_center(snap: Any, name: str) -> float:
+    sb = snap.signals.get(name)
+    return float(sb.center) if sb is not None and math.isfinite(sb.center) else 0.0
+
+
 class LiveAnalyzer:
     def __init__(
         self,
@@ -153,6 +158,14 @@ class LiveAnalyzer:
         self.has_audio = False
         self.baseline_just_ready = False
         self._au_smooth: dict[str, StreamingMedian] = {}
+        self._speed_smooth = StreamingMedian(3)
+        self.client_skin: dict[int, tuple[float, float, float]] = {}
+        """Skin colour means the browser measured on the raw frame, keyed by frame t_us."""
+        self.skin_from_client = 0
+        self.skin_from_jpeg = 0
+        self._speech_heard = False
+        self._speaking_phase_us = 0
+        self._last_frame_t: int | None = None
         self.adaptive: AdaptiveBaseline | None = None
         self.markers: list[Marker] = []
         self.audio_stream: Any = None
@@ -203,7 +216,11 @@ class LiveAnalyzer:
         cfg = self.cfg
         h, w = rgb.shape[:2]
         self._size = (w, h)
-        speaking_now = self.speaking or bool(self.speaking_hint and not self.has_audio)
+        # The guided-calibration phase hint stands in for speech detection only during calibration;
+        # afterwards, without a microphone, the speaking state is unknown (scored against 'all').
+        speaking_now = self.speaking or bool(
+            self.speaking_hint and not self.has_audio and not self.baseline.ready
+        )
         t_inf = time.perf_counter()
         faces = self.landmarker.process(rgb, t_us)
         values: dict[str, float] = {}
@@ -240,6 +257,7 @@ class LiveAnalyzer:
                 t_us - self._prev_t_us if self._prev_t_us is not None else 0,
             )
             self._prev_head, self._prev_t_us = cur_head, t_us
+            speed = self._speed_smooth.push(speed)
             values.update(
                 {
                     "gaze.horizontal": gz_h,
@@ -253,7 +271,16 @@ class LiveAnalyzer:
                 rgb, (bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
             )
             quality = face_quality(width_px, yaw, pitch) * image_quality_factor(blur, luma)
-            skin = skin_means(rgb, face.landmarks, w, h) if self.pulse is not None else None
+            skin = None
+            if self.pulse is not None:
+                skin = self.client_skin.pop(t_us, None)
+                if skin is not None:
+                    self.skin_from_client += 1
+                else:
+                    skin = skin_means(rgb, face.landmarks, w, h)
+                    self.skin_from_jpeg += 1
+            while len(self.client_skin) > 64:  # frames the analyzer never saw (dropped)
+                self.client_skin.pop(next(iter(self.client_skin)))
             pulse_now = self.pulse.push(t_us, skin, quality) if self.pulse and skin else None
             aus = None
             if (
@@ -317,6 +344,8 @@ class LiveAnalyzer:
         new_events: list[Event] = []
         speaking = speaking_now
         state = STATE_SPEAKING if speaking else STATE_SILENT
+        if self.baseline.ready and not self.has_audio:
+            state = STATE_ALL
         if not self.baseline.ready:
             if self.novelty is not None:
                 self.novelty.update(t_us, quality, values)  # learning the familiar combinations
@@ -367,7 +396,18 @@ class LiveAnalyzer:
         kept += self.episodes.add(kept, t_us)
         self.events.extend(kept)
         self._thumbnail(rgb, bbox, kept)
+        if self.speaking:
+            self._speech_heard = True
+        if self._last_frame_t is not None and self.speaking_hint:
+            self._speaking_phase_us += max(0, t_us - self._last_frame_t)
+        self._last_frame_t = t_us
         hints: list[str] = []
+        if (
+            self.has_audio
+            and not self._speech_heard
+            and (self._speaking_phase_us > 5_000_000 or t_us > 60_000_000)
+        ):
+            hints.append("microphone hears no speech: check the input device and mute switch")
         if not faces:
             hints.append("no face in view")
         else:
@@ -499,6 +539,9 @@ class LiveAnalyzer:
                 id_start=850_000,
                 frame_period_us=self.period_us,
                 min_ms=self.cfg.gaze.min_ms,
+                center_h=_snap_center(snap, "gaze.horizontal"),
+                center_v=_snap_center(snap, "gaze.vertical"),
+                center_yaw=_snap_center(snap, "head.yaw_deg"),
             )
         self.blinks = StreamingBlinkDetector(
             self.cfg.events,
@@ -763,7 +806,18 @@ class LiveAnalyzer:
                 k: sum(1 for e in self.events if e.event_type == k)
                 for k in sorted({e.event_type for e in self.events})
             },
-            "pulse": pulse_summary,
+            "pulse": (
+                {
+                    **pulse_summary,
+                    "skin_source": (
+                        "browser raw frame"
+                        if self.skin_from_client >= self.skin_from_jpeg
+                        else "compressed frame"
+                    ),
+                }
+                if pulse_summary is not None
+                else None
+            ),
             **live_stats,
         }
         (session_dir / "analysis.json").write_text(json.dumps(_nan_to_none(analysis), indent=2))
@@ -784,6 +838,11 @@ class LiveAnalyzer:
         face_frames = int(cols["face_present"].sum()) if n else 0
         q_present = cols["quality"][cols["face_present"]] if n else np.zeros(0)
         notes = list(snap.notes)
+        if self.has_audio and not self._speech_heard:
+            notes.append(
+                "microphone on but no speech detected in the whole session: voice, pitch, "
+                "latency and speaking-state baselines are missing (muted or wrong input device)"
+            )
         if self.stats.frames_dropped:
             notes.append(f"{self.stats.frames_dropped} frames dropped to bound latency")
         quality_summary = QualitySummary(
@@ -840,6 +899,7 @@ class LiveAnalyzer:
             "frame_state": frame_state,
         }
         analysis["session_cues"] = cue_profile(
+            whole_session=True,
             window=(snap.window_end_us, analysis["duration_us"]),
             t_us=cols["t_us"].astype(np.int64),
             signals=sig_cols,

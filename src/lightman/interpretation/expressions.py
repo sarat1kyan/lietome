@@ -32,7 +32,8 @@ class Prototype:
     """AU columns that must stay low (probability < ABSENT_MAX) for the pattern to count."""
     note: str = ""
     extra: tuple[tuple[str, str, float], ...] = ()
-    """Non-AU conditions (signal, "<" or ">", threshold) that must all hold, e.g. gaze down."""
+    """Non-AU conditions (signal, "<" or ">", threshold) that must all hold, e.g. gaze down.
+    Thresholds apply to the signal minus this person's calibration center when one is known."""
     valence: str = "neutral"
     """"negative", "positive" or "neutral": used by the cue layer, never shown as a feeling."""
 
@@ -72,7 +73,7 @@ PROTOTYPES: tuple[Prototype, ...] = (
         "embarrassment",
         ("au.AU12",),
         absent=("au.AU6", "au.AU25", "au.AU26"),
-        extra=(("gaze.vertical", "<", -0.35),),
+        extra=(("gaze.vertical", "<", -0.25),),
         note="controlled smile with gaze down (Keltner 1995 display); also shyness, amusement",
         valence="negative",
     ),
@@ -111,14 +112,22 @@ PATTERN_EXIT = 0.40
 MIN_MS = 100
 BRIEF_MAX_MS = 500
 FAST_ONSET_MS = 150
-"""A brief pattern reaching its peak this fast after onset is tagged a microexpression candidate."""
+"""A brief pattern rising from rest to peak this fast is tagged a microexpression candidate."""
+ONSET_REST = 0.3
+"""Pattern score below which the face counts as at rest for onset timing."""
+ONSET_LOOKBACK = 8
+"""Frames searched before the entry crossing for the resting level."""
 UNILATERAL_ENTER = 0.35
 
 
 def pattern_scores(
-    signals: dict[str, npt.NDArray[np.floating]], n: int
+    signals: dict[str, npt.NDArray[np.floating]],
+    n: int,
+    centers: dict[str, float] | None = None,
 ) -> dict[str, npt.NDArray[np.float64]]:
-    """Per-frame score in [0, 1] for each prototype; NaN where AUs are missing."""
+    """Per-frame score in [0, 1] for each prototype; NaN where AUs are missing.
+
+    ``centers``: calibration centers for the non-AU ``extra`` conditions (gaze)."""
     out: dict[str, npt.NDArray[np.float64]] = {}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN frames (no face) stay NaN
@@ -144,7 +153,7 @@ def pattern_scores(
                     if col is None:
                         score = np.full_like(score, np.nan)
                         break
-                    arr = np.asarray(col, dtype=np.float64)
+                    arr = np.asarray(col, dtype=np.float64) - (centers or {}).get(sig, 0.0)
                     hold = arr < thr if op == "<" else arr > thr
                     score = np.where(hold & np.isfinite(arr), score, 0.0)
             else:
@@ -160,6 +169,33 @@ def pattern_scores(
                     continue
                 score = np.nanmax(np.vstack(diffs), axis=0) / UNILATERAL_ENTER * PATTERN_ENTER
             out[p.name] = np.clip(np.where(np.isfinite(score), score, np.nan), 0.0, 1.0)[:n]
+    return out
+
+
+def _rest_index(score: npt.NDArray[np.float64], start_idx: int) -> int | None:
+    """Last frame at or before ``start_idx`` (within ONSET_LOOKBACK) where the score sat at rest."""
+    for i in range(start_idx, max(-1, start_idx - ONSET_LOOKBACK - 1), -1):
+        v = score[i]
+        if np.isfinite(v) and v < ONSET_REST:
+            return i
+    return None
+
+
+def _extra_centers(
+    signals: dict[str, npt.NDArray[np.floating]], calib: npt.NDArray[np.bool_] | None
+) -> dict[str, float]:
+    """Calibration medians of the non-AU signals that prototypes condition on."""
+    out: dict[str, float] = {}
+    if calib is None or calib.sum() < 10:
+        return out
+    for sig in {s for p in PROTOTYPES for s, _, _ in p.extra}:
+        col = signals.get(sig)
+        if col is None:
+            continue
+        vals = np.asarray(col, dtype=float)[calib]
+        vals = vals[np.isfinite(vals)]
+        if vals.size >= 10:
+            out[sig] = float(np.median(vals))
     return out
 
 
@@ -204,11 +240,12 @@ def detect_expression_patterns(
     n = t_us.shape[0]
     period = median_frame_period_us(t_us)
     ok = np.asarray(quality >= min_quality, dtype=np.bool_)
-    scores = pattern_scores(signals, n)
+    calib = (np.asarray(t_us) < calibration_end_us) & ok if calibration_end_us else None
+    centers = _extra_centers(signals, calib)
+    scores = pattern_scores(signals, n, centers)
     events: list[Event] = []
     k = id_start
     proto_by_name = {p.name: p for p in PROTOTYPES}
-    calib = (np.asarray(t_us) < calibration_end_us) & ok if calibration_end_us else None
     for name, score in scores.items():
         p = proto_by_name[name]
         enter, exit_ = PATTERN_ENTER, PATTERN_EXIT
@@ -222,8 +259,11 @@ def detect_expression_patterns(
             if dur_ms < MIN_MS:
                 continue
             brief = dur_ms <= BRIEF_MAX_MS
-            onset_ms = (int(t_us[s.peak_idx]) - start) / 1000
-            fast = brief and onset_ms <= FAST_ONSET_MS
+            rest = _rest_index(score, s.start_idx)
+            onset_ms = (
+                (int(t_us[s.peak_idx]) - int(t_us[rest])) / 1000 if rest is not None else None
+            )
+            fast = brief and onset_ms is not None and onset_ms <= FAST_ONSET_MS
             peak = float(score[s.peak_idx])
             contribs = []
             for c in p.required or tuple(x for pair in p.unilateral for x in pair):
@@ -258,7 +298,9 @@ def detect_expression_patterns(
                     ),
                     description=(
                         f"Action Units matched the FACS prototype for {name} for {dur_ms:.0f} ms "
-                        f"(pattern score {peak:.2f}, peak {onset_ms:.0f} ms after onset). This "
+                        f"(pattern score {peak:.2f}"
+                        + (f", rest to peak in {onset_ms:.0f} ms" if onset_ms is not None else "")
+                        + "). This "
                         "describes the appearance of the face, not a felt emotion; the same "
                         "pattern occurs in speech, humor and concentration."
                         + (
@@ -307,32 +349,57 @@ class StreamingExpressionDetector:
         self._k = id_start
         self._open: dict[str, tuple[int, int, float, dict[str, float], list[float]]] = {}
         self._calib: dict[str, list[float]] = {}
+        self._calib_extra: dict[str, list[float]] = {}
+        self.centers: dict[str, float] = {}
         self.thresholds: dict[str, tuple[float, float]] = {}
         """Per-pattern (enter, exit) after ``finish_learning``; defaults otherwise."""
+        self._last_rest_us: dict[str, int] = {}
+        self._run_rest: dict[str, int | None] = {}
+        self.last_scores: dict[str, float] = {}
+        """Most recent per-pattern score, for the live meter."""
 
-    @staticmethod
-    def _scores(values: dict[str, float]) -> dict[str, npt.NDArray[np.float64]]:
+    def _scores(self, values: dict[str, float]) -> dict[str, npt.NDArray[np.float64]]:
         arrs = {
             k: np.array([v]) for k, v in values.items() if k.startswith(("au.", "gaze.", "head."))
         }
-        return pattern_scores(arrs, 1) if arrs else {}
+        return pattern_scores(arrs, 1, self.centers) if arrs else {}
 
     def learn(self, quality: float, values: dict[str, float]) -> None:
         """Feed calibration frames to learn this person's resting level per pattern."""
         if quality < self.min_quality:
             return
+        for sig in {sg for p in PROTOTYPES for sg, _, _ in p.extra}:
+            v = values.get(sig)
+            if v is not None and np.isfinite(v):
+                self._calib_extra.setdefault(sig, []).append(float(v))
         for name, sc in self._scores(values).items():
             if sc.size and np.isfinite(sc[0]):
                 self._calib.setdefault(name, []).append(float(sc[0]))
 
     def finish_learning(self) -> None:
+        self.centers = {
+            k: float(np.median(v)) for k, v in self._calib_extra.items() if len(v) >= 10
+        }
         for name, vals in self._calib.items():
             self.thresholds[name] = personal_thresholds(np.asarray(vals))
         self._calib.clear()
+        self._calib_extra.clear()
+
+    def meter(self, top: int = 5) -> list[dict[str, float | str]]:
+        """Patterns closest to firing: score and this person's entry threshold."""
+        rows: list[dict[str, float | str]] = []
+        for name, sc in self.last_scores.items():
+            enter = self.thresholds.get(name, (PATTERN_ENTER, PATTERN_EXIT))[0]
+            rows.append({"name": name, "score": round(sc, 3), "enter": round(enter, 3)})
+        rows.sort(key=lambda r: -float(r["score"]) / float(r["enter"]))
+        return rows[:top]
 
     def update(self, t_us: int, quality: float, values: dict[str, float]) -> list[Event]:
         out: list[Event] = []
         scores = self._scores(values)
+        self.last_scores = {
+            name: float(sc[0]) for name, sc in scores.items() if sc.size and np.isfinite(sc[0])
+        }
         for p in PROTOTYPES:
             sc = scores.get(p.name)
             s = float(sc[0]) if sc is not None and sc.size else float("nan")
@@ -342,6 +409,9 @@ class StreamingExpressionDetector:
             if run is None:
                 if valid and s >= enter:
                     self._open[p.name] = (t_us, t_us, s, dict(values), [quality])
+                    self._run_rest[p.name] = self._last_rest_us.get(p.name)
+                elif np.isfinite(s) and s < ONSET_REST:
+                    self._last_rest_us[p.name] = t_us
             elif not valid or s < exit_:
                 out += self._close(p, run, t_us)
                 del self._open[p.name]
@@ -368,7 +438,13 @@ class StreamingExpressionDetector:
         if dur_ms < MIN_MS:
             return []
         brief = dur_ms <= BRIEF_MAX_MS
-        fast = brief and (peak_t - start) / 1000 <= FAST_ONSET_MS
+        rest_t = self._run_rest.pop(p.name, None)
+        fast = (
+            brief
+            and rest_t is not None
+            and start - rest_t <= self.period_us * (ONSET_LOOKBACK + 1)
+            and (peak_t - rest_t) / 1000 <= FAST_ONSET_MS
+        )
         cols = p.required or tuple(x for pair in p.unilateral for x in pair)
         contribs = [
             FeatureContribution(

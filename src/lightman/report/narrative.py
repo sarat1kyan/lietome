@@ -64,6 +64,7 @@ def build_narrative(
         f"{'Live' if mode == 'live' else 'Recorded'} session of {dur}. "
         + (f"A face was visible in {cov:.0%} of analyzed frames." if cov is not None else "")
     )
+    lines_notes = [n for n in quality.get("notes", []) if "microphone" in n or "no speech" in n]
     mfq = quality.get("mean_face_quality")
     if mfq is not None:
         adj = "good" if mfq >= 0.8 else "fair" if mfq >= 0.5 else "poor"
@@ -132,7 +133,7 @@ def build_narrative(
             lines.append(f"{len(voice)} voice events: {listed}.")
     expr = [e for e in events if e.event_type == "expression_pattern"]
     if expr:
-        by = Counter(t for e in expr for t in e.tags if t not in ("expression", "brief"))
+        by = Counter(_pattern_name(e) for e in expr)
         brief = sum("brief" in e.tags for e in expr)
         listed = ", ".join(f"{k} ({n})" for k, n in by.most_common(4))
         mean_ms = float(np.mean([(e.end_us - e.start_us) / 1000 for e in expr]))
@@ -213,6 +214,7 @@ def build_narrative(
         "These are measurements of movement and voice relative to this person's own baseline. They "
         "do not identify emotions, intent or truthfulness."
     )
+    lines[1:1] = [f"Warning: {n}." for n in lines_notes]
     return lines
 
 

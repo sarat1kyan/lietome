@@ -7,7 +7,7 @@
   const GESTURE_TYPES = ['head_gesture', 'eye_closure', 'blink_rate_change', 'gaze_away', 'stillness']
   let sortBy = $state<'severity' | 'time'>('severity')
   let needle = $state('')
-  const PULSE_TYPES = ['pulse_change', 'au_novelty']
+  const PULSE_TYPES = ['pulse_change']
   const hasEpisodes = $derived(events.some((e) => e.event_type === 'episode' || e.event_type === 'multi_signal_deviation'))
   const listed = $derived(
     events
@@ -15,7 +15,7 @@
       .filter((e) => {
         if (filter === 'episodes') return hasEpisodes ? e.event_type === 'episode' || e.event_type === 'multi_signal_deviation' : true
         if (filter === 'speaking') return e.tags.includes('speaking')
-        if (filter === 'expressions') return e.event_type === 'expression_pattern'
+        if (filter === 'expressions') return e.event_type === 'expression_pattern' || e.event_type === 'au_novelty'
         if (filter === 'gestures') return GESTURE_TYPES.includes(e.event_type)
         if (filter === 'pulse') return PULSE_TYPES.includes(e.event_type)
         if (filter === 'all') return true

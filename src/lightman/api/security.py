@@ -15,6 +15,7 @@ import ipaddress
 import secrets
 import socket
 from pathlib import Path
+from typing import Any
 
 from platformdirs import user_config_dir
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -42,12 +43,27 @@ def ws_token(ws: WebSocket) -> str | None:
     return ws.cookies.get(COOKIE) or ws.headers.get(HEADER) or ws.query_params.get("token")
 
 
+LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
+PROXY_HEADERS = ("x-forwarded-for", "forwarded", "x-real-ip")
+
+
+def is_local_client(host: str | None, headers: Any) -> bool:
+    """A direct connection from this machine. Behind a reverse proxy every request looks
+    local, so any forwarding header disqualifies it."""
+    if host is None or host not in LOOPBACK:
+        return False
+    return not any(headers.get(h) for h in PROXY_HEADERS)
+
+
 class TokenMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, token: str) -> None:  # type: ignore[no-untyped-def]
         super().__init__(app)
         self.token = token
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        client = request.client.host if request.client else None
+        if is_local_client(client, request.headers):
+            return await call_next(request)  # same machine: no token needed
         supplied = request.cookies.get(COOKIE) or request.headers.get(HEADER)
         query = request.query_params.get("token")
         if query is not None and token_ok(query, self.token):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import socket
 from pathlib import Path
@@ -211,6 +212,13 @@ def serve(
         bool | None, typer.Option("--tls/--no-tls", help="Default: on when not bound to localhost")
     ] = None,
     token: Annotated[str | None, typer.Option(help="Access token; generated when omitted")] = None,
+    local_port: Annotated[
+        int,
+        typer.Option(
+            help="With --host 0.0.0.0: also serve plain HTTP on 127.0.0.1 at this port "
+            "(0 = port + 1, -1 = off). Browsers allow the camera on http://localhost."
+        ),
+    ] = 0,
 ) -> None:
     """Serve the web UI and API. Local by default; --host 0.0.0.0 enables LAN access with
     a required token and self-signed TLS (browsers need HTTPS for camera and microphone)."""
@@ -249,14 +257,34 @@ def serve(
             "sessions. Stop the server when done.",
             fg=typer.colors.YELLOW,
         )
-    uvicorn.run(
-        create_app(out, cfg, token=tok),
-        host=host,
-        port=port,
-        log_level="warning",
-        ssl_certfile=certfile,
-        ssl_keyfile=keyfile,
-    )
+    app_obj = create_app(out, cfg, token=tok)
+    servers = [
+        uvicorn.Server(
+            uvicorn.Config(
+                app_obj,
+                host=host,
+                port=port,
+                log_level="warning",
+                ssl_certfile=certfile,
+                ssl_keyfile=keyfile,
+            )
+        )
+    ]
+    lport = port + 1 if local_port == 0 else local_port
+    if not local_only and lport > 0:
+        servers.append(
+            uvicorn.Server(
+                uvicorn.Config(app_obj, host="127.0.0.1", port=lport, log_level="warning")
+            )
+        )
+        typer.echo(f"On this machine: http://localhost:{lport}/ (no token, no certificate)")
+    if use_tls:
+        typer.echo(f"On this machine over TLS: https://localhost:{port}/ (no token)")
+
+    async def _run_all() -> None:
+        await asyncio.gather(*(s.serve() for s in servers))
+
+    asyncio.run(_run_all())
 
 
 @app.command()

@@ -172,6 +172,7 @@
       lastIndex: lastAnswer ? { id: lastAnswer.id, value: lastAnswer.index.value, band: lastAnswer.index.band } : null,
       ticker: m.baseline_ready ? ticker : null,
       hints: m.hints ?? [],
+      serverPatterns: m.patterns ?? null,
       full: showOverlay,
     })
   }

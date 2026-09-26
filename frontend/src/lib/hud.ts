@@ -44,6 +44,7 @@ export interface HudInput {
   ticker: string | null
   lastIndex: { id: string; value: number | null; band: string } | null
   hints: string[]
+  serverPatterns: { name: string; score: number; enter: number }[] | null
   full: boolean
 }
 
@@ -209,17 +210,20 @@ export function drawHud(inp: HudInput) {
 
   // ---- left: pattern meter
   {
-    const pats = patternScores(v).filter((p) => p.score >= 0.2).slice(0, 4)
+    // server scores use this person's calibration floors; fall back to the client estimate
+    const pats = (inp.serverPatterns ?? patternScores(v).map((p) => ({ ...p, enter: PATTERN_ENTER })))
+      .filter((p) => p.score >= 0.2).slice(0, 4)
     const pw = 236, px = 12, py = inp.hints.length ? 126 : 96
     const ph = 30 + Math.max(1, pats.length) * 18
     panel(ctx, px, py, pw, ph)
     ctx.fillStyle = C.muted; ctx.font = mono(10); ctx.fillText('FACS PATTERN   appearance, not feeling', px + 10, py + 13)
     ctx.font = mono(10.5)
     pats.forEach((p, i) => {
-      const y = py + 34 + i * 18, on = p.score >= PATTERN_ENTER
+      const y = py + 34 + i * 18, on = p.score >= p.enter
       ctx.fillStyle = on ? C.violet : C.muted; ctx.fillText(p.name, px + 10, y)
       ctx.fillStyle = C.line; ctx.fillRect(px + 120, y - 4, 70, 8)
       ctx.fillStyle = on ? C.violet : C.faint; ctx.fillRect(px + 120, y - 4, 70 * p.score, 8)
+      ctx.fillStyle = C.text; ctx.fillRect(px + 120 + 70 * Math.min(1, p.enter), y - 6, 1, 12)
       ctx.textAlign = 'right'; ctx.fillStyle = C.muted; ctx.fillText(p.score.toFixed(2), px + pw - 10, y); ctx.textAlign = 'left'
     })
     if (!pats.length) { ctx.fillStyle = C.faint; ctx.fillText('neutral', px + 10, py + 34) }

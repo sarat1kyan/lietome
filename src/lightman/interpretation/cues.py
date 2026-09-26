@@ -114,6 +114,7 @@ def cue_profile(
     events: list[Any] | None = None,
     state_baselines: Mapping[str, Mapping[str, tuple[float, float]]] | None = None,
     frame_state: npt.NDArray[np.str_] | None = None,
+    whole_session: bool = False,
 ) -> dict[str, Any]:
     """Evaluate each cue in ``window`` (start_us, end_us) against baseline statistics.
 
@@ -193,7 +194,7 @@ def cue_profile(
     # the session, calibration included). A pattern that this face makes all the time is not
     # a cue; one that appears only in this answer is.
     session_fraction = float((b - a) / max(1, int(t_us[-1]) - int(t_us[0]))) if t_us.size else 1.0
-    if events is not None and t_us.size and session_fraction <= 0.7:
+    if events is not None and t_us.size and not whole_session and session_fraction <= 0.7:
         span = (int(t_us[0]), int(t_us[-1]))
         out_min = max(1e-6, ((span[1] - span[0]) - (b - a)) / 60e6)
         pats = [e for e in events if e.event_type == "expression_pattern"]
@@ -229,6 +230,7 @@ def cue_profile(
         "window_us": [a, b],
         "speech_unscored": speech_unscored,
         "session_fraction": round(min(1.0, session_fraction), 3),
+        "whole_session": whole_session,
         "cues": results,
         "present": present,
         "evaluated": evaluated,
@@ -316,7 +318,7 @@ def deception_cue_index(profile: dict[str, Any]) -> dict[str, Any]:
     reliability = min(1.0, den / total_w) * min(1.0, window_s / 20.0)
     if profile.get("speech_unscored"):
         reliability *= 0.5  # speech in the window but no speaking-state baseline
-    if profile.get("session_fraction", 0.0) > 0.7:
+    if profile.get("whole_session") or profile.get("session_fraction", 0.0) > 0.7:
         reliability *= 0.6  # whole-session window: nothing of this person to compare against
     raw = num / den  # [-1, 1]
     value = 50.0 + 50.0 * raw * reliability

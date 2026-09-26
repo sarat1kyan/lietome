@@ -29,3 +29,12 @@ session dir, resource exhaustion, or corrupted results.
 * No memory cap on Arrow table growth for very long recordings beyond `max_frames`.
 * Future ONNX/PyTorch backends must verify hashes and load with `weights_only`/safetensors.
 * API layer (FastAPI) will need auth, upload size limits, and per-session quotas.
+
+## Localhost
+
+Direct connections from the machine running `lightman serve` skip the token: the loopback
+interface is not reachable from the network. Requests carrying a forwarding header
+(`X-Forwarded-For`, `Forwarded`, `X-Real-IP`) never get this exemption, so a reverse proxy on
+the same host cannot turn remote requests into trusted ones. In LAN mode a second listener
+serves plain HTTP on 127.0.0.1 at port + 1 (`--local-port`, -1 to disable); browsers treat
+http://localhost as a secure context, so the camera works without a certificate warning.

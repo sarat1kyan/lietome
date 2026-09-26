@@ -298,6 +298,7 @@ def summarize_protocol(
     if cue_inputs is not None and t_us.size:
         start = int(cue_inputs.get("session_start_us", 0))
         session_cues = cue_profile(
+            whole_session=True,
             window=(start, session_end_us),
             t_us=t_us,
             signals=cue_inputs["signals"],

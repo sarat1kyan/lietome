@@ -99,6 +99,10 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   exclusion AUs (social smile, brow flash, lip press, brow furrow), per-signal thresholds and
   minimum durations, live voice table + pitch cue, frame readout and live overlays. Replay
   404 -> 268 deviations (167 -> 111/min).
+* ADR-023: fixes from the 17 Sep test sessions (gaze relative to calibration, dead-mic
+  warning, stale speaking hint without mic, onset from rest, pulse gating, browser-side skin
+  means, whole-session index discount, speed spikes, meter/tag bugs, parquet cache) and
+  localhost access without token (plus plain http on port + 1 in LAN mode).
 * ADR-022: stillness episodes, live pauses, microexpression candidate tier, lip bite, subject
   history across sessions, capture coaching hints, bootstrap CI on the index delta, UI pass
   (expression lane, sort/filter, copy summary, script templates, hotkeys).

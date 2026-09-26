@@ -26,9 +26,10 @@
   })
   const rate = $derived(detail.analysis?.blink_rate_per_min ?? null)
   const cues = $derived(detail.analysis?.session_cues ?? null)
+  const META_TAGS = new Set(['expression', 'brief', 'fast_onset', 'negative', 'positive', 'neutral'])
   const exprCounts = $derived.by(() => {
     const c = new Map<string, number>()
-    for (const e of events) if (e.event_type === 'expression_pattern') for (const t of e.tags) if (t !== 'expression' && t !== 'brief') c.set(t, (c.get(t) ?? 0) + 1)
+    for (const e of events) if (e.event_type === 'expression_pattern') for (const t of e.tags) if (!META_TAGS.has(t)) c.set(t, (c.get(t) ?? 0) + 1)
     return [...c.entries()].sort((a, b) => b[1] - a[1])
   })
   const briefCount = $derived(events.filter((e) => e.event_type === 'expression_pattern' && e.tags.includes('brief')).length)

@@ -5,12 +5,14 @@ Session ids are validated against a strict pattern so a request can never escape
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from lightman.core.errors import LightmanError
@@ -22,6 +24,20 @@ SIGNAL_RE = re.compile(r"^[A-Za-z0-9_.]{1,64}$")
 
 class SessionNotFoundError(LightmanError):
     pass
+
+
+@functools.lru_cache(maxsize=12)
+def _cached_table(path: str, mtime_ns: int, columns: tuple[str, ...] | None) -> pa.Table:
+    """Parquet reads keyed by file and modification time: the frame readout asks for the same
+    session many times a second while the playhead moves."""
+    del mtime_ns  # part of the cache key only
+    return pq.read_table(path, columns=list(columns) if columns is not None else None)
+
+
+def read_table(path: Path, columns: list[str] | None = None) -> pa.Table:
+    return _cached_table(
+        str(path), path.stat().st_mtime_ns, tuple(columns) if columns is not None else None
+    )
 
 
 class SessionStore:
@@ -108,7 +124,7 @@ class SessionStore:
         cols = ["t_us", *wanted]
         if "quality" in columns and "quality" not in cols:
             cols.append("quality")
-        tbl = pf.read(columns=cols)
+        tbl = read_table(p, cols)
         n = tbl.num_rows
         idx = np.arange(n) if n <= max_points else np.linspace(0, n - 1, max_points).astype(int)
         out: dict[str, Any] = {
@@ -135,7 +151,7 @@ class SessionStore:
             return {"t_us": None, "values": {}, "baseline": {}, "state": None}
         pf = pq.ParquetFile(p)
         columns = [c for c in pf.schema_arrow.names if SIGNAL_RE.match(c) or c == "t_us"]
-        tbl = pf.read(columns=columns)
+        tbl = read_table(p, columns)
         ts = tbl.column("t_us").to_numpy().astype(np.int64)
         if ts.size == 0:
             return {"t_us": None, "values": {}, "baseline": {}, "state": None}
@@ -264,7 +280,7 @@ class SessionStore:
         ) -> list[dict[str, Any]]:
             if not p.is_file():
                 return []
-            tbl = pq.read_table(p)
+            tbl = read_table(p)
             names = [c for c in tbl.schema.names if SIGNAL_RE.match(c)]
             ts = tbl.column("t_us").to_numpy().astype(np.int64)
             ma, mb = rng(ts, a), rng(ts, b)
