@@ -21,6 +21,10 @@ HEAD_YAW_ENTER_DEG = 25.0
 HEAD_YAW_EXIT_DEG = 18.0
 
 
+def _finite(x: float) -> float:
+    return float(x) if np.isfinite(x) else 0.0
+
+
 def _direction(h: float, v: float, yaw: float) -> str:
     parts: list[str] = []
     horiz = h + yaw / 40.0  # yaw 20 deg adds 0.5 to the horizontal proxy
@@ -94,15 +98,20 @@ def detect_gaze_away(
     id_start: int,
     min_ms: int = 1000,
     min_quality: float = 0.4,
+    center_h: float = 0.0,
+    center_v: float = 0.0,
+    center_yaw: float = 0.0,
 ) -> list[Event]:
+    """``center_*``: this person's resting gaze and head yaw from calibration. A face that
+    rests looking slightly off the lens (camera above the screen) is not "away"."""
     t = np.asarray(t_us, dtype=np.int64)
     n = t.size
     if n < 2:
         return []
     period = int(np.median(np.diff(t)))
-    h = np.asarray(gaze_h, dtype=float)
-    v = np.asarray(gaze_v, dtype=float)
-    y = np.asarray(yaw_deg, dtype=float)
+    h = np.asarray(gaze_h, dtype=float) - _finite(center_h)
+    v = np.asarray(gaze_v, dtype=float) - _finite(center_v)
+    y = np.asarray(yaw_deg, dtype=float) - _finite(center_yaw)
     q = np.asarray(quality, dtype=float)
     mag = np.hypot(h, v)
     ok = np.isfinite(mag) & (q >= min_quality)
@@ -159,7 +168,11 @@ class StreamingGazeAway:
         frame_period_us: int,
         min_ms: int = 1000,
         min_quality: float = 0.4,
+        center_h: float = 0.0,
+        center_v: float = 0.0,
+        center_yaw: float = 0.0,
     ) -> None:
+        self.center = (_finite(center_h), _finite(center_v), _finite(center_yaw))
         self.subject_id = subject_id
         self.extractor_id = extractor_id
         self.baseline_quality = baseline_quality
@@ -173,6 +186,7 @@ class StreamingGazeAway:
         self.active_since_us: int | None = None
 
     def update(self, t_us: int, quality: float, h: float, v: float, yaw: float) -> list[Event]:
+        h, v, yaw = h - self.center[0], v - self.center[1], yaw - self.center[2]
         mag = float(np.hypot(h, v)) if np.isfinite(h) and np.isfinite(v) else float("nan")
         ok = quality >= self.min_quality and np.isfinite(mag) and np.isfinite(yaw)
         if self._start is None:

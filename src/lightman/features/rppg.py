@@ -26,24 +26,39 @@ _TEMPLE_L, _TEMPLE_R = 70, 300
 _CHEEK_L, _CHEEK_R = 50, 280
 
 BAND_HZ = (0.7, 3.0)
+MIN_USABLE_FRACTION = 0.25
+"""Below this share of usable windows the session estimate is reported as not usable."""
 RESAMPLE_HZ = 15.0
+
+
+def skin_rois(landmarks: npt.NDArray[np.floating]) -> list[tuple[float, float, float, float]]:
+    """Forehead and cheek boxes in normalized image coordinates (x0, y0, x1, y1). The browser
+    uses them to average the raw frame before JPEG compression."""
+    lm = landmarks
+    face_w = max(1e-6, float(lm[:, 0].max() - lm[:, 0].min()))
+    half = 0.07 * face_w
+    rois = [
+        (
+            float(lm[_TEMPLE_L, 0]),
+            float(lm[_FOREHEAD_TOP, 1]),
+            float(lm[_TEMPLE_R, 0]),
+            float(min(lm[_BROW_L, 1], lm[_BROW_R, 1])),
+        )
+    ]
+    for idx in (_CHEEK_L, _CHEEK_R):
+        cx, cy = float(lm[idx, 0]), float(lm[idx, 1])
+        rois.append((cx - half, cy - half, cx + half, cy + half))
+    return rois
 
 
 def skin_means(
     rgb: npt.NDArray[np.uint8], landmarks: npt.NDArray[np.floating], w: int, h: int
 ) -> tuple[float, float, float]:
     """Mean R, G, B over forehead + both cheeks. NaN triple when the ROI is empty."""
-    lm = landmarks
-    fx0 = int(lm[_TEMPLE_L, 0] * w)
-    fx1 = int(lm[_TEMPLE_R, 0] * w)
-    fy0 = int(lm[_FOREHEAD_TOP, 1] * h)
-    fy1 = int(min(lm[_BROW_L, 1], lm[_BROW_R, 1]) * h)
-    face_w = max(1.0, float(lm[:, 0].max() - lm[:, 0].min()) * w)
-    half = int(0.07 * face_w)
-    rois = [(fx0, fy0, fx1, fy1)]
-    for idx in (_CHEEK_L, _CHEEK_R):
-        cx, cy = int(lm[idx, 0] * w), int(lm[idx, 1] * h)
-        rois.append((cx - half, cy - half, cx + half, cy + half))
+    rois = [
+        (int(x0 * w), int(y0 * h), int(x1 * w), int(y1 * h))
+        for x0, y0, x1, y1 in skin_rois(landmarks)
+    ]
     acc = np.zeros(3, dtype=np.float64)
     count = 0
     for ax, ay, bx, by in rois:
@@ -168,17 +183,20 @@ def pulse_events(
     Returns (events, summary) where summary has reference_bpm, median_bpm, usable_fraction.
     """
     good = [e for e in estimates if e.snr_db >= min_snr_db]
+    usable = (len(good) / len(estimates)) if estimates else None
     summary: dict[str, float | None] = {
         "reference_bpm": None,
         "median_bpm": None,
-        "usable_fraction": (len(good) / len(estimates)) if estimates else None,
+        "usable_fraction": usable,
     }
-    if len(good) < 5:
+    if len(good) < 8 or usable is None or usable < MIN_USABLE_FRACTION:
         return [], summary
     t0 = good[0].t_us
-    ref = [e.bpm for e in good if e.t_us <= t0 + int(reference_s * 1e6)]
-    if len(ref) < 3:
-        return [], summary
+    ref_end = t0 + int(reference_s * 1e6)
+    ref_all = [e for e in estimates if t0 <= e.t_us <= ref_end]
+    ref = [e.bpm for e in good if e.t_us <= ref_end]
+    if len(ref) < 6 or len(ref) < 0.5 * len(ref_all):
+        return [], summary  # the reference window itself is mostly noise
     ref_bpm = float(np.median(ref))
     summary["reference_bpm"] = round(ref_bpm, 1)
     summary["median_bpm"] = round(float(np.median([e.bpm for e in good])), 1)

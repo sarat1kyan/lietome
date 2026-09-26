@@ -16,7 +16,8 @@ export function auName(key: string): string {
 }
 
 // Prototype patterns mirrored from the server for the live pattern meter.
-export const PROTOTYPES: { name: string; required: string[]; absent?: string[]; unilateral?: [string, string][] }[] = [
+// extra: [signal, '<' | '>', threshold] on raw values (the server measures gaze against calibration)
+export const PROTOTYPES: { name: string; required: string[]; absent?: string[]; unilateral?: [string, string][]; extra?: [string, '<' | '>', number][] }[] = [
   { name: 'happiness', required: ['AU6', 'AU12'] },
   { name: 'social smile', required: ['AU12'], absent: ['AU6'] },
   { name: 'brow flash', required: ['AU1', 'AU2'], absent: ['AU5', 'AU26'] },
@@ -26,7 +27,11 @@ export const PROTOTYPES: { name: string; required: string[]; absent?: string[]; 
   { name: 'sadness', required: ['AU1', 'AU4', 'AU15'] },
   { name: 'disgust', required: ['AU9', 'AU15'] },
   { name: 'contempt', required: [], unilateral: [['AUL12', 'AUR12'], ['AUL14', 'AUR14']] },
+  { name: 'embarrassment', required: ['AU12'], absent: ['AU6', 'AU25', 'AU26'], extra: [['gaze.vertical', '<', -0.35]] },
+  { name: 'distress', required: ['AU4', 'AU7', 'AU10'], absent: ['AU12'] },
+  { name: 'tension', required: ['AU7', 'AU23'], absent: ['AU12', 'AU26'] },
   { name: 'lip press', required: ['AU24'], absent: ['AU12'] },
+  { name: 'lip bite', required: ['AU32'], absent: ['AU12'] },
   { name: 'brow furrow', required: ['AU4'], absent: ['AU1', 'AU2', 'AU12'] },
 ]
 export const PATTERN_ENTER = 0.55
@@ -41,6 +46,7 @@ export function patternScores(values: Record<string, number>): { name: string; s
       const mean = vals.reduce((a, b) => a + b, 0) / vals.length
       score = 0.5 * mean + 0.5 * Math.min(...vals)
       if (p.absent) { const av = p.absent.map(g); if (av.some((v) => v == null)) continue; if (Math.max(...av) >= 0.35) score = 0 }
+      if (p.extra) { const ok = p.extra.every(([k, op, thr]) => { const x = values[k]; return x != null && (op === '<' ? x < thr : x > thr) }); if (!ok) score = 0 }
     } else {
       const diffs = (p.unilateral ?? []).map(([l, r]) => (g(l) != null && g(r) != null ? Math.abs(g(l) - g(r)) : NaN)).filter((d) => !isNaN(d))
       if (!diffs.length) continue

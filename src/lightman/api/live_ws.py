@@ -27,6 +27,7 @@ from lightman.core.errors import LightmanError
 from lightman.core.logging import get_logger
 from lightman.face.au_base import AUDetector
 from lightman.face.base import FaceLandmarker
+from lightman.features.rppg import skin_rois
 from lightman.live.analyzer import LiveAnalyzer
 from lightman.live.audio_stream import StreamingAudioAnalyzer
 from lightman.models import ModelRegistry
@@ -191,6 +192,13 @@ async def live_endpoint(
                 continue
             kind_b, t_us = raw[0], struct.unpack(">Q", raw[1:9])[0]
             payload = raw[9:]
+            if kind_b == 3:
+                # browser-side skin colour means on the raw frame (before JPEG): 3 x float32 LE
+                if len(payload) == 12:
+                    r, g, b = struct.unpack("<3f", payload)
+                    if all(0.0 <= v <= 255.0 for v in (r, g, b)):
+                        analyzer.client_skin[int(t_us)] = (r, g, b)
+                continue
             if kind_b == 1:
                 if len(payload) > MAX_FRAME_BYTES:
                     await ws.send_text(json.dumps({"type": "error", "detail": "frame too large"}))
@@ -244,6 +252,19 @@ async def live_endpoint(
                                     analyzer.pulse.wave() if analyzer.pulse is not None else None
                                 ),
                                 "hints": res.hints,
+                                "skin_rois": (
+                                    [
+                                        [round(v, 4) for v in box]
+                                        for box in skin_rois(res.landmarks_xy)
+                                    ]
+                                    if res.landmarks_xy is not None and analyzer.pulse is not None
+                                    else None
+                                ),
+                                "patterns": (
+                                    analyzer.expressions.meter()
+                                    if analyzer.expressions is not None
+                                    else None
+                                ),
                                 "gaze_away_since_us": (
                                     analyzer.gaze.active_since_us
                                     if analyzer.gaze is not None

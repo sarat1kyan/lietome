@@ -4,7 +4,19 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+### Fixed
+- Gaze-away and the embarrassment gaze condition measured from the calibration center.
+- Muted microphone now raises a hint and a session warning.
+- Calibration phase hint no longer marks later frames as speech when there is no microphone.
+- Microexpression candidates require a rise from rest; pulse reference requires usable windows.
+- Whole-session cue index always discounted; head-speed spikes median-filtered.
+- Narrative and summary no longer count meta tags as expression patterns; event filters.
+- Live pattern meter uses server scores and personal thresholds.
+
 ### Added
+- Browser-side skin colour means for the pulse estimate (binary kind 3) (ADR-023).
+- Localhost access without token; plain http://localhost:<port+1> in LAN mode.
+- Parquet read cache in the API.
 - Stillness episodes (offline and live), live speech pauses, microexpression candidate tier
   (brief + fast onset), lip bite prototype (ADR-022).
 - Subject history endpoint and card; subject id input in the live view.

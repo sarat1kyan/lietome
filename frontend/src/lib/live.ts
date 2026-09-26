@@ -1,5 +1,6 @@
 // Browser-side live capture: getUserMedia -> JPEG frames over WebSocket -> server analyzer.
-// Protocol (binary, client -> server): 1 byte kind (1 = video jpeg, 2 = audio pcm f32 16 kHz),
+// Protocol (binary, client -> server): 1 byte kind (1 = video jpeg, 2 = audio pcm f32 16 kHz,
+// 3 = skin colour means r,g,b float32 LE measured on the raw frame),
 // 8 bytes big-endian t_us, payload. Text (both ways): JSON messages.
 
 export interface LiveFrameMsg {
@@ -13,6 +14,8 @@ export interface LiveFrameMsg {
   baseline_ready: boolean
   pulse: { bpm: number; snr_db: number; usable: boolean } | null
   pulse_wave?: number[] | null
+  skin_rois?: number[][] | null
+  patterns?: { name: string; score: number; enter: number }[] | null
   hints?: string[]
   gaze_away_since_us?: number | null
   stats: { analyzed_fps: number; latency_ms_p50: number | null; frames_dropped: number; frames_analyzed: number }
@@ -41,6 +44,19 @@ export interface LiveOptions {
   onstate: (s: 'connecting' | 'running' | 'stopped' | 'error', detail?: string) => void
 }
 
+function skinMeans(ctx: CanvasRenderingContext2D, w: number, h: number, rois: number[][]): [number, number, number] | null {
+  let r = 0, g = 0, b = 0, n = 0
+  for (const [x0, y0, x1, y1] of rois) {
+    const ax = Math.max(0, Math.floor(Math.min(x0, x1) * w)), bx = Math.min(w, Math.ceil(Math.max(x0, x1) * w))
+    const ay = Math.max(0, Math.floor(Math.min(y0, y1) * h)), by = Math.min(h, Math.ceil(Math.max(y0, y1) * h))
+    if (bx - ax < 2 || by - ay < 2) continue
+    const d = ctx.getImageData(ax, ay, bx - ax, by - ay).data
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2] }
+    n += d.length / 4
+  }
+  return n ? [r / n, g / n, b / n] : null
+}
+
 function header(kind: number, tUs: number, payload: ArrayBuffer): ArrayBuffer {
   const out = new Uint8Array(9 + payload.byteLength)
   out[0] = kind
@@ -55,6 +71,7 @@ export class LiveSession {
   private stream: MediaStream | null = null
   private timer: number | null = null
   private inflight = 0
+  private rois: number[][] | null = null
   private t0: number | null = null
   private audioCtx: AudioContext | null = null
   private audioNode: ScriptProcessorNode | null = null
@@ -82,7 +99,7 @@ export class LiveSession {
     this.ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data) as LiveMsg
       if (m.type === 'ready') { this.t0 = performance.now(); this.opts.onstate('running'); this.loop(); if (this.opts.audio) this.startAudio() }
-      if (m.type === 'frame') this.inflight = Math.max(0, this.inflight - 1)
+      if (m.type === 'frame') { this.inflight = Math.max(0, this.inflight - 1); if (m.skin_rois !== undefined) this.rois = m.skin_rois ?? null }
       if (m.type === 'error') this.opts.onstate('error', m.detail)
       this.opts.onmessage(m)
     }
@@ -92,6 +109,7 @@ export class LiveSession {
 
   private loop() {
     const canvas = document.createElement('canvas')
+    const ctx2d = canvas.getContext('2d', { willReadFrequently: true })!
     const period = 1000 / this.opts.fps
     const tick = async () => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
@@ -100,8 +118,17 @@ export class LiveSession {
         const scale = Math.min(1, this.opts.width / this.video.videoWidth)
         canvas.width = Math.round(this.video.videoWidth * scale)
         canvas.height = Math.round(this.video.videoHeight * scale)
-        canvas.getContext('2d')!.drawImage(this.video, 0, 0, canvas.width, canvas.height)
+        ctx2d.drawImage(this.video, 0, 0, canvas.width, canvas.height)
         const tUs = (performance.now() - (this.t0 ?? 0)) * 1000
+        // Skin colour means on the raw frame for the pulse estimate: JPEG flattens the
+        // sub-level changes a heartbeat makes. Boxes come from the previous frame's landmarks.
+        const skin = this.rois ? skinMeans(ctx2d, canvas.width, canvas.height, this.rois) : null
+        if (skin && this.ws?.readyState === WebSocket.OPEN) {
+          const buf = new ArrayBuffer(12)
+          const dv = new DataView(buf)
+          dv.setFloat32(0, skin[0], true); dv.setFloat32(4, skin[1], true); dv.setFloat32(8, skin[2], true)
+          this.ws.send(header(3, tUs, buf))
+        }
         const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', this.opts.jpegQuality))
         if (blob && this.ws?.readyState === WebSocket.OPEN) {
           this.inflight++

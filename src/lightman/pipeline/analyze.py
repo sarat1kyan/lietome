@@ -172,6 +172,11 @@ def extract_frames_at(
     return out
 
 
+def _center(baseline: BaselineSnapshot, name: str) -> float:
+    sb = baseline.signals.get(name)
+    return float(sb.center) if sb is not None and math.isfinite(sb.center) else 0.0
+
+
 def _state_cs(
     baselines: Mapping[str, BaselineSnapshot],
 ) -> dict[str, dict[str, tuple[float, float]]]:
@@ -392,6 +397,8 @@ def analyze_video(
     }
     for name in AU_COLUMNS:  # classifier outputs jitter frame to frame; smooth before scoring
         signals[name] = median_smooth(signals[name])
+    # single-frame tracker glitches (pose flips) produce implausible head-speed spikes
+    signals["head.speed_deg_s"] = median_smooth(signals["head.speed_deg_s"], 3)
     speaking_mask: npt.NDArray[np.bool_] | None = None
     frame_state: npt.NDArray[np.str_] | None = None
     if audio is not None and audio.segments:
@@ -482,6 +489,9 @@ def analyze_video(
             baseline_quality=baseline.quality,
             id_start=850_000,
             min_ms=cfg.gaze.min_ms,
+            center_h=_center(baseline, "gaze.horizontal"),
+            center_v=_center(baseline, "gaze.vertical"),
+            center_yaw=_center(baseline, "head.yaw_deg"),
         )
     if au_detector is not None:
         extra += detect_expression_patterns(
@@ -631,6 +641,7 @@ def analyze_video(
     ref_end = baseline.window_end_us + 60_000_000
     ref_n = sum(1 for b in ref_blinks if baseline.window_end_us <= b < ref_end)
     summary["session_cues"] = cue_profile(
+        whole_session=True,
         window=(baseline.window_end_us, int(t_us[-1]) if n_frames else 0),
         t_us=t_us,
         signals=signals,
