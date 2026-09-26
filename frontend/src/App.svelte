@@ -14,6 +14,8 @@
   import KeyMoments from './components/KeyMoments.svelte'
   import ComparePanel from './components/ComparePanel.svelte'
   import HistoryCard from './components/HistoryCard.svelte'
+  import SubjectView from './components/SubjectView.svelte'
+  const subjectMode = typeof location !== 'undefined' && location.hash === '#subject'
 
   let sessions = $state<SessionSummary[]>([])
   let current = $state<SessionSummary | null>(null)
@@ -80,12 +82,16 @@
   }
 
   onMount(async () => {
+    if (subjectMode) return
     window.addEventListener('keydown', onKey)
     try { await reload() } catch (e) { error = String(e) }
     return () => window.removeEventListener('keydown', onKey)
   })
 </script>
 
+{#if subjectMode}
+<SubjectView />
+{:else}
 <div class="app">
   <header class="top">
     <div class="brand-nav">
@@ -138,6 +144,8 @@
 
   <EventPanel {selected} {events} session={current} baseline={detail?.baseline ?? null} onpick={pick} />
 </div>
+{/if}
+
 
 <style>
   .app {

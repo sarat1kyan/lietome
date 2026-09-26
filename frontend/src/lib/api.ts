@@ -40,6 +40,10 @@ export const api = {
     const q = new URLSearchParams({ table, signals: signals.join(','), max_points: String(maxPoints) })
     return getJson(`./api/sessions/${id}/features?${q}`)
   },
+  async validation(subject: string): Promise<any> {
+    if (demo()) return { n_items: 0 }
+    return getJson(`./api/subjects/${encodeURIComponent(subject)}/validation`)
+  },
   async history(id: string): Promise<History> {
     if (demo()) return { subject_id: 'demo', sessions: [], shifts: [] }
     return getJson(`./api/sessions/${id}/history`)

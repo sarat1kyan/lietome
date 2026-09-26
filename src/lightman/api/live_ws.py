@@ -85,6 +85,7 @@ async def live_endpoint(
     output_root: Path,
     landmarker_factory: LandmarkerFactory,
     au_factory: AUFactory,
+    subject_hub: Any = None,
 ) -> None:
     await ws.accept()
     analyzer: LiveAnalyzer | None = None
@@ -189,6 +190,12 @@ async def live_endpoint(
                     await ws.send_text(
                         json.dumps({"type": "marked", "id": marker.id, "t_us": marker.t_us})
                     )
+                elif kind == "subject":
+                    if subject_hub is not None:
+                        await subject_hub.publish(data.get("state"))
+                        await ws.send_text(
+                            json.dumps({"type": "subject_screens", "n": subject_hub.screens})
+                        )
                 elif kind == "phase" and analyzer is not None:
                     analyzer.speaking_hint = bool(data.get("speaking", False))
                 elif kind == "stop":

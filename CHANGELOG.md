@@ -4,6 +4,11 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+### Added (ADR-025)
+- Subject screen (`#subject`): instructions and questions only, fed live from the operator.
+- Blind validation card game: per-question truth/lie cards shown only to the subject.
+- AUROC with bootstrap intervals per score, per session and pooled per subject.
+
 ### Added (ADR-024)
 - Control-referenced cue index: each answer against the other control answers (live and saved).
 - Personal norms across a subject's sessions: narrow calibrations widened, drift reported.

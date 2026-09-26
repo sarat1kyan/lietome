@@ -184,6 +184,54 @@ class SessionStore:
         }
         return {"t_us": int(ts[i]), "values": values, "baseline": baseline, "state": state}
 
+    def validation(self, subject: str) -> dict[str, Any]:
+        """Pool labelled protocol answers (truth/lie) across a subject's sessions."""
+        from lightman.protocol.summary import auroc_ci
+
+        items: list[dict[str, Any]] = []
+        sessions = []
+        for s in self.list_sessions():
+            if s.get("subject_id") != subject:
+                continue
+            proto = self.read_json(s["session_id"], "protocol.json")
+            if not proto:
+                continue
+            n = 0
+            for q in proto.get("questions", []):
+                if q.get("expected") not in ("truth", "lie"):
+                    continue
+                items.append(
+                    {
+                        "session_id": s["session_id"],
+                        "id": q["id"],
+                        "category": q["category"],
+                        "label": 1 if q["expected"] == "lie" else 0,
+                        "cue_index": (q.get("cue_index") or {}).get("value"),
+                        "control_index": (q.get("control_index") or {}).get("value"),
+                        "score": q.get("score"),
+                    }
+                )
+                n += 1
+            if n:
+                sessions.append({"session_id": s["session_id"], "items": n})
+        by_score: dict[str, Any] = {}
+        for key in ("control_index", "cue_index", "score"):
+            pairs = [(it[key], it["label"]) for it in items if it[key] is not None]
+            if pairs:
+                by_score[key] = auroc_ci([float(p[0]) for p in pairs], [p[1] for p in pairs])
+        return {
+            "subject_id": subject,
+            "sessions": sessions,
+            "n_items": len(items),
+            "by_score": by_score,
+            "note": (
+                "AUROC of each score for telling this person's instructed lies from truths, "
+                "pooled across validation sessions. 0.5 is chance; the interval shows how much "
+                "the number could move with other questions. Below about 20 items per class "
+                "the interval is too wide to conclude anything."
+            ),
+        }
+
     HISTORY_SIGNALS = (
         "head.yaw_deg",
         "head.speed_deg_s",

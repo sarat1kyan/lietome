@@ -33,7 +33,7 @@ export interface LiveQuestionSummaryMsg {
 export interface LiveBaselineMsg { type: 'baseline'; frames_used: number; quality: number; states: Record<string, { frames_used: number; quality: number }>; signals?: Record<string, { center: number; scale: number }> }
 export interface LiveBaselineUpdateMsg { type: 'baseline_update'; signals: Record<string, { center: number; scale: number }> }
 export interface LiveErrorMsg { type: 'error'; detail: string }
-export type LiveMsg = LiveFrameMsg | LiveEventsMsg | LiveAudioMsg | LiveSessionMsg | LiveBaselineMsg | LiveBaselineUpdateMsg | LiveErrorMsg | { type: 'ready'; session_id: string } | { type: 'marked'; id: string; t_us: number } | LiveQuestionSummaryMsg
+export type LiveMsg = LiveFrameMsg | LiveEventsMsg | LiveAudioMsg | LiveSessionMsg | LiveBaselineMsg | LiveBaselineUpdateMsg | LiveErrorMsg | { type: 'ready'; session_id: string } | { type: 'marked'; id: string; t_us: number } | LiveQuestionSummaryMsg | { type: 'subject_screens'; n: number }
 
 export interface LiveOptions {
   au: boolean; subject?: string;
@@ -159,6 +159,10 @@ export class LiveSession {
 
   mark(m: { kind_of: 'question' | 'note' | 'end' | 'reference'; id?: string; text?: string; category?: string; expected?: string | null; value?: number; t_us: number }) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'mark', ...m }))
+  }
+
+  sendSubject(state: Record<string, unknown>) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'subject', state }))
   }
 
   setPhase(speaking: boolean) {

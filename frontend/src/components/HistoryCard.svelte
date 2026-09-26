@@ -3,12 +3,26 @@
   import type { History } from '../lib/types'
   let { sessionId }: { sessionId: string } = $props()
   let hist = $state<History | null>(null)
-  $effect(() => { const id = sessionId; hist = null; api.history(id).then((h) => { if (id === sessionId) hist = h }).catch(() => (hist = null)) })
+  let val = $state<any>(null)
+  $effect(() => { const id = sessionId; hist = null; val = null; api.history(id).then((h) => { if (id === sessionId) { hist = h; api.validation(h.subject_id).then((v) => (val = v)).catch(() => (val = null)) } }).catch(() => (hist = null)) })
+  const label: Record<string, string> = { control_index: 'index vs control answers', cue_index: 'index vs calibration', score: 'deviation score' }
   const others = $derived((hist?.sessions ?? []).filter((s) => s.session_id !== sessionId))
   const human = (s: string) => s.replace(/^(blendshape|au)\./, '').replace(/^head\./, 'head ').replace(/_deg(_s)?$/, '').replace(/^eye\./, 'eye ')
   const when = (s: string | null) => (s ? s.slice(0, 16).replace('T', ' ') : '')
 </script>
 
+{#if val && val.n_items}
+<section class="hist">
+  <div class="hdr"><span class="eyebrow">validation for {val.subject_id}</span><span class="muted">{val.n_items} instructed answers over {val.sessions.length} sessions. how well each score separated this person's instructed lies from truths.</span></div>
+  <table class="mono"><tbody>
+    {#each Object.entries(val.by_score) as [k, r] (k)}
+      {@const rr = r as any}
+      <tr class:hot={rr.auroc != null && rr.ci95 && rr.ci95[0] > 0.5}><td class="sig">{label[k] ?? k}</td><td class="num">AUROC {rr.auroc ?? '-'}</td><td class="muted">{rr.ci95 ? `95% ${rr.ci95[0]} to ${rr.ci95[1]}` : 'too few items'}; {rr.n_lie} lies, {rr.n_truth} truths</td></tr>
+    {/each}
+  </tbody></table>
+  <p class="muted note">{val.note}</p>
+</section>
+{/if}
 {#if hist && others.length}
 <section class="hist">
   <div class="hdr"><span class="eyebrow">this subject across sessions</span><span class="muted">{hist.subject_id}: {hist.sessions.length} sessions. baseline centers of this session against the median of the others, in this session's robust SD.</span></div>
