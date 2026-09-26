@@ -38,10 +38,10 @@
   let ticker = $state<string | null>(null)
   let answers = $state<LiveQuestionSummaryMsg[]>([])
   const lastAnswer = $derived(answers.length ? answers[answers.length - 1] : null)
-  const FLASH_TYPES = new Set(['episode', 'expression_pattern', 'blink_rate_change', 'head_gesture', 'au_novelty', 'pulse_change', 'gaze_away'])
+  const FLASH_TYPES = new Set(['episode', 'expression_pattern', 'blink_rate_change', 'head_gesture', 'au_novelty', 'pulse_change', 'gaze_away', 'self_touch', 'shrug'])
   let pulseHold = $state<{ bpm: number; snr_db: number; usable: boolean } | null>(null)
   let tally = $state<Record<string, number>>({})
-  const TALLY = [['episode', 'episodes'], ['expression_pattern', 'patterns'], ['head_gesture', 'gestures'], ['gaze_away', 'gaze away'], ['au_novelty', 'pairings'], ['voice', 'voice'], ['pulse_change', 'pulse'], ['blink', 'blinks']] as const
+  const TALLY = [['episode', 'episodes'], ['expression_pattern', 'patterns'], ['head_gesture', 'gestures'], ['gaze_away', 'gaze away'], ['self_touch', 'self-touch'], ['au_novelty', 'pairings'], ['voice', 'voice'], ['pulse_change', 'pulse'], ['blink', 'blinks']] as const
   let lastBlinkAt = 0
   let showOverlay = $state(true)
   let showProtocol = $state(false)
@@ -200,6 +200,7 @@
       ticker: m.baseline_ready ? ticker : null,
       hints: m.hints ?? [],
       serverPatterns: m.patterns ?? null,
+      body: m.body ?? null,
       full: showOverlay,
     })
   }

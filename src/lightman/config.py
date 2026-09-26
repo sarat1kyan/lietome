@@ -38,6 +38,11 @@ class AUConfig(BaseModel):
         pattern="^opengraphau/(resnet50_s2|resnet18_s2)$",
         description="resnet50_s2: better; resnet18_s2: ~4x faster",
     )
+    live_model: str = Field(
+        default="auto",
+        pattern="^(auto|opengraphau/resnet50_s2|opengraphau/resnet18_s2)$",
+        description="Live AU model; auto = resnet50 when `lightman bench` measured it fast enough",
+    )
     stride: int = Field(
         default=1, ge=1, description="Run the AU model on every Nth analyzed frame (1 = all)"
     )
@@ -219,6 +224,18 @@ class NoveltyConfig(BaseModel):
     min_ms: int = Field(default=300, ge=0)
 
 
+class BodyConfig(BaseModel):
+    """Upper body and hands from a pose model: shoulders, hand motion, self-touch."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    model: str = Field(
+        default="mediapipe/pose_landmarker_lite", pattern="^mediapipe/pose_landmarker_lite$"
+    )
+    stride: int = Field(default=1, ge=1, description="Run the pose model on every Nth frame")
+
+
 class GazeConfig(BaseModel):
     """Sustained gaze-away episodes from the eye-look proxy and head yaw."""
 
@@ -265,6 +282,7 @@ class LightmanConfig(BaseModel):
     gestures: GesturesConfig = GesturesConfig()
     novelty: NoveltyConfig = NoveltyConfig()
     gaze: GazeConfig = GazeConfig()
+    body: BodyConfig = BodyConfig()
     storage: StorageConfig = StorageConfig()
     privacy: PrivacyConfig = PrivacyConfig()
     models: ModelsConfig = ModelsConfig()

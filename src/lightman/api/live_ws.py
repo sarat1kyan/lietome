@@ -24,6 +24,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from lightman.baseline.norms import load_norms
 from lightman.config import LightmanConfig
+from lightman.core.bench import live_au_model
 from lightman.core.errors import LightmanError
 from lightman.core.logging import get_logger
 from lightman.face.au_base import AUDetector
@@ -86,12 +87,18 @@ async def live_endpoint(
     landmarker_factory: LandmarkerFactory,
     au_factory: AUFactory,
     subject_hub: Any = None,
+    pose_factory: Any = None,
 ) -> None:
+    if pose_factory is None:
+        from lightman.body.pose import default_pose_factory
+
+        pose_factory = default_pose_factory
     await ws.accept()
     analyzer: LiveAnalyzer | None = None
     audio: StreamingAudioAnalyzer | None = None
     landmarker: FaceLandmarker | None = None
     au: AUDetector | None = None
+    pose: Any = None
     ended_by = "disconnect"
     last_baseline_push = 0.0
     try:
@@ -108,7 +115,10 @@ async def live_endpoint(
                         run_cfg = run_cfg.model_copy(
                             update={
                                 "au": run_cfg.au.model_copy(
-                                    update={"enabled": True, "model": "opengraphau/resnet18_s2"}
+                                    update={
+                                        "enabled": True,
+                                        "model": live_au_model(run_cfg.au.live_model),
+                                    }
                                 )
                             }
                         )
@@ -120,6 +130,7 @@ async def live_endpoint(
                         landmarker = await to_thread.run_sync(landmarker_factory, run_cfg, registry)
                         if run_cfg.au.enabled:
                             au = await to_thread.run_sync(au_factory, run_cfg, registry)
+                        pose = await to_thread.run_sync(pose_factory, run_cfg, registry)
                         if data.get("audio"):
                             from lightman.audio.vad import SileroVAD
 
@@ -144,6 +155,7 @@ async def live_endpoint(
                     )
                     analyzer.has_audio = audio is not None
                     analyzer.audio_stream = audio
+                    analyzer.pose = pose
                     analyzer.norms_root = output_root
                     analyzer.norms = load_norms(output_root, analyzer.subject_id)
                     await ws.send_text(
@@ -238,7 +250,7 @@ async def live_endpoint(
                 shown = {
                     k: round(v, 4)
                     for k, v in res.values.items()
-                    if k.startswith(("head.", "eye.", "au.", "gaze.", "asym."))
+                    if k.startswith(("head.", "eye.", "au.", "gaze.", "asym.", "body."))
                     or k in cfg.events.signals
                     or k in LANE_SIGNALS
                 }
@@ -267,6 +279,7 @@ async def live_endpoint(
                                     analyzer.pulse.wave() if analyzer.pulse is not None else None
                                 ),
                                 "hints": res.hints,
+                                "body": res.body,
                                 "skin_rois": (
                                     [
                                         [round(v, 4) for v in box]
@@ -368,5 +381,7 @@ async def live_endpoint(
             landmarker.close()
         if au is not None:
             au.close()
+        if pose is not None:
+            pose.close()
         with contextlib.suppress(Exception):
             await ws.close()

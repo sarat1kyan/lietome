@@ -17,6 +17,7 @@ import numpy.typing as npt
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from lightman.body.features import BODY_COLUMNS
 from lightman.features.action_units import OPENGRAPHAU_NAMES
 from lightman.features.blendshapes import BLENDSHAPE_NAMES
 
@@ -63,7 +64,7 @@ META_COLUMNS: tuple[str, ...] = (
     "skin.b",
 )
 SIGNAL_COLUMNS: tuple[str, ...] = (
-    HEAD_COLUMNS + EYE_COLUMNS + DERIVED_COLUMNS + BLENDSHAPE_COLUMNS + AU_COLUMNS
+    HEAD_COLUMNS + EYE_COLUMNS + DERIVED_COLUMNS + BODY_COLUMNS + BLENDSHAPE_COLUMNS + AU_COLUMNS
 )
 FEATURE_COLUMNS: tuple[str, ...] = META_COLUMNS + SIGNAL_COLUMNS
 
@@ -74,7 +75,15 @@ def signal_unit(name: str) -> str:
         return "deg"
     if name.endswith("_deg_s"):
         return "deg_s"
-    if name.startswith(("gaze.", "asym.")):
+    if name == "body.shoulder_tilt_deg":
+        return "deg"
+    if name == "body.hand_speed":
+        return "face_widths_s"
+    if name in ("body.shoulder_y",):
+        return "face_heights"
+    if name == "body.hand_face":
+        return "face_widths"
+    if name.startswith(("gaze.", "asym.", "body.")):
         return "coefficient"
     if name.startswith("head.t"):
         return "model_units"
@@ -121,6 +130,7 @@ class FeatureTableBuilder:
         blur: float = math.nan,
         luma: float = math.nan,
         skin: Sequence[float] | None = None,
+        body: dict[str, float] | None = None,
     ) -> None:
         c = self._cols
         c["frame_index"].append(frame_index)
@@ -139,6 +149,8 @@ class FeatureTableBuilder:
         c["speaking"].append(speaking)
         c["quality.blur"].append(blur)
         c["quality.luma"].append(luma)
+        for name in BODY_COLUMNS:
+            c[name].append(body.get(name, math.nan) if body else math.nan)
         sr, sg, sb = skin if skin is not None else (math.nan, math.nan, math.nan)
         c["skin.r"].append(sr)
         c["skin.g"].append(sg)

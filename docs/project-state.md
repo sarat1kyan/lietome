@@ -99,6 +99,8 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   exclusion AUs (social smile, brow flash, lip press, brow furrow), per-signal thresholds and
   minimum durations, live voice table + pitch cue, frame readout and live overlays. Replay
   404 -> 268 deviations (167 -> 111/min).
+* ADR-026: pose model (shoulders, hands, self-touch, shrug; movement cue from hands),
+  `lightman bench` (M5 Pro: face 3.5, pose 5.8, AU18 16.5, AU50 71 ms), auto live AU model.
 * ADR-025: subject screen (#subject, hub over /api/subject) and blind validation game;
   AUROC with bootstrap CI per score per session and pooled per subject.
 * ADR-024: control-referenced index (answers vs the person's other control answers),

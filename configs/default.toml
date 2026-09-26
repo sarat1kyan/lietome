@@ -17,6 +17,7 @@ stride = 1                   # run the AU model on every Nth analyzed frame
 prefer_gpu = true            # use CUDAExecutionProvider when onnxruntime-gpu is installed
 min_face_px = 48.0           # skip AU inference on faces narrower than this
 
+live_model = "auto"           # live AU model; auto = resnet50 if `lightman bench` found it fast enough
 [audio]                      # Silero VAD (ONNX) + prosodic features (librosa pyin), 16 kHz mono
 enabled = true
 vad_threshold = 0.5
@@ -104,6 +105,11 @@ min_ms = 300
 [gaze]                       # sustained gaze-away episodes (eye-look proxy + head yaw)
 enabled = true
 min_ms = 1000
+
+[body]                       # upper body and hands (MediaPipe pose, lite): shoulders, hand motion, self-touch
+enabled = true
+model = "mediapipe/pose_landmarker_lite"
+stride = 1
 
 [storage]
 store_landmarks = false      # 478x3 per frame is large and biometric; off by default

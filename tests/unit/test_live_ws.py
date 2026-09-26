@@ -11,7 +11,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 
 from lightman.api.app import create_app
-from lightman.config import BaselineConfig, LightmanConfig, ModelsConfig
+from lightman.config import BaselineConfig, BodyConfig, LightmanConfig, ModelsConfig
 from tests.unit.test_pipeline_fake import FakeLandmarker
 
 
@@ -31,6 +31,7 @@ def test_live_ws_round_trip(tmp_path: Path) -> None:
     cfg = LightmanConfig(
         baseline=BaselineConfig(window_s=1.0, min_samples=10, good_samples=30),
         models=ModelsConfig(allow_download=False),
+        body=BodyConfig(enabled=False),
     )
     fake = FakeLandmarker()
     app = create_app(tmp_path, cfg, landmarker_factory=lambda _c, _r: fake)
@@ -89,7 +90,7 @@ def test_live_ws_round_trip(tmp_path: Path) -> None:
 
 
 def test_live_ws_rejects_bad_frame_and_ignores_garbage(tmp_path: Path) -> None:
-    cfg = LightmanConfig(models=ModelsConfig(allow_download=False))
+    cfg = LightmanConfig(models=ModelsConfig(allow_download=False), body=BodyConfig(enabled=False))
     app = create_app(tmp_path, cfg, landmarker_factory=lambda _c, _r: FakeLandmarker())
     client = TestClient(app)
     with client.websocket_connect("/api/live") as ws:

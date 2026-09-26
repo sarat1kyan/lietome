@@ -4,7 +4,7 @@
   import { explain } from '../lib/explain'
   let { selected, events, session, baseline, onpick }: { selected: LmEvent | null; events: LmEvent[]; session: SessionSummary | null; baseline: Baseline | null; onpick: (e: LmEvent) => void } = $props()
   let filter = $state<'episodes' | 'expressions' | 'gestures' | 'pulse' | 'all' | 'video' | 'audio' | 'speaking'>('episodes')
-  const GESTURE_TYPES = ['head_gesture', 'eye_closure', 'blink_rate_change', 'gaze_away', 'stillness']
+  const GESTURE_TYPES = ['head_gesture', 'eye_closure', 'blink_rate_change', 'gaze_away', 'stillness', 'self_touch', 'shrug']
   let sortBy = $state<'severity' | 'time'>('severity')
   let needle = $state('')
   const PULSE_TYPES = ['pulse_change']

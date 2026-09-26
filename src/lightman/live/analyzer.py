@@ -22,6 +22,8 @@ from lightman import __version__
 from lightman.baseline.adaptive import AdaptiveBaseline
 from lightman.baseline.norms import apply_norms, update_norms
 from lightman.baseline.robust import STATE_ALL, STATE_SILENT, STATE_SPEAKING
+from lightman.body.events import StreamingBodyEvents
+from lightman.body.features import BODY_COLUMNS, BodyFeatures, body_points
 from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
 from lightman.core.logging import get_logger
@@ -119,6 +121,7 @@ class FrameResult:
     new_events: list[Event]
     baseline_ready: bool
     pulse: PulseEstimate | None = None
+    body: dict[str, list[list[float]]] | None = None
     hints: list[str] = field(default_factory=list)
     """Capture-quality coaching for the operator (move closer, more light, ...)."""
 
@@ -146,7 +149,9 @@ class LiveAnalyzer:
         self.stats = LiveStats(started_monotonic=time.monotonic())
         self.session_id = _new_session_id()
         signals = list(cfg.events.signals)
-        self.baseline = StreamingBaseline(cfg.baseline, [*signals, "eye.aspect_ratio_mean"])
+        self.baseline = StreamingBaseline(
+            cfg.baseline, [*signals, "eye.aspect_ratio_mean", *BODY_COLUMNS[:4]]
+        )
         self.deviation: StreamingDeviationDetector | None = None
         self.blinks: StreamingBlinkDetector | None = None
         self.events: list[Event] = []
@@ -173,12 +178,17 @@ class LiveAnalyzer:
         self.skin_from_client = 0
         self.skin_from_jpeg = 0
         self._speech_heard = False
+        self.pose: Any = None
+        """Pose backend (optional, set by the caller)."""
+        self._body_feat = BodyFeatures()
+        self.body_events: StreamingBodyEvents | None = None
         self.norms: dict[str, Any] | None = None
         """This subject's norms from earlier sessions (set by the caller before frames arrive)."""
         self.norms_root: Path | None = None
         self.norms_report: dict[str, Any] | None = None
         self._speaking_phase_us = 0
         self._last_frame_t: int | None = None
+        self._last_body_pts: dict[str, list[list[float]]] | None = None
         self.adaptive: AdaptiveBaseline | None = None
         self.markers: list[Marker] = []
         self.audio_stream: Any = None
@@ -284,6 +294,15 @@ class LiveAnalyzer:
                 rgb, (bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
             )
             quality = face_quality(width_px, yaw, pitch) * image_quality_factor(blur, luma)
+            body = None
+            body_pts = None
+            if self.pose is not None and self._frame_index % cfg.body.stride == 0:
+                obs = self.pose.process(rgb, t_us)
+                lm_body = obs.landmarks if obs is not None else None
+                body = self._body_feat.compute(lm_body, bbox, t_us, w / max(1, h))
+                values.update({k: v for k, v in body.items() if math.isfinite(v)})
+                body_pts = body_points(lm_body)
+            self._last_body_pts = body_pts
             skin = None
             if self.pulse is not None:
                 skin = self.client_skin.pop(t_us, None)
@@ -327,6 +346,7 @@ class LiveAnalyzer:
                 blur=blur,
                 luma=luma,
                 skin=skin,
+                body=body,
             )
             self.stats.frames_with_face += 1
         else:
@@ -388,6 +408,12 @@ class LiveAnalyzer:
                 )
             if self.novelty is not None:
                 new_events += self.novelty.update(t_us, quality, values)
+            if self.body_events is not None:
+                new_events += self.body_events.update(
+                    t_us,
+                    values.get("body.hand_face", math.nan),
+                    values.get("body.shoulder_y", math.nan),
+                )
             if self.stillness is not None and "head.speed_deg_s" in values:
                 new_events += self.stillness.update(t_us, quality, values["head.speed_deg_s"])
             if self.gaze is not None and "gaze.horizontal" in values:
@@ -450,10 +476,19 @@ class LiveAnalyzer:
             new_events=kept,
             baseline_ready=self.baseline.ready,
             pulse=pulse_now,
+            body=self._last_body_pts if faces else None,
             hints=hints,
         )
 
-    _THUMB_TYPES = ("episode", "expression_pattern", "head_gesture", "au_novelty", "gaze_away")
+    _THUMB_TYPES = (
+        "episode",
+        "expression_pattern",
+        "head_gesture",
+        "au_novelty",
+        "gaze_away",
+        "self_touch",
+        "shrug",
+    )
 
     def _thumbnail(
         self,
@@ -540,6 +575,17 @@ class LiveAnalyzer:
             )
         if self.novelty is not None:
             self.novelty.finish_learning(snap.quality)
+        sh = snap.signals.get("body.shoulder_y")
+        if self.pose is not None:
+            self.body_events = StreamingBodyEvents(
+                shoulder_center=sh.center if sh is not None else math.nan,
+                shoulder_scale=sh.scale if sh is not None else math.nan,
+                subject_id=self.subject_id,
+                extractor_id=self.pose.provenance.extractor_id,
+                baseline_quality=snap.quality,
+                id_start=980_000,
+                frame_period_us=self.period_us,
+            )
         sp = snap.signals.get("head.speed_deg_s")
         if sp is not None and math.isfinite(sp.center):
             self.stillness = StreamingStillness(
@@ -755,6 +801,8 @@ class LiveAnalyzer:
             self.events.extend(self.gaze.flush(self._last_t or 0))
         if self.stillness is not None:
             self.events.extend(self.stillness.flush(self._last_t or 0))
+        if self.body_events is not None:
+            self.events.extend(self.body_events.flush(self._last_t or 0))
         if self.blinks is not None and self.baseline.snapshot is not None:
             self.events.extend(
                 blink_rate_events(
@@ -1050,7 +1098,8 @@ class LiveAnalyzer:
             config=self.cfg.snapshot(),
             environment=snapshot_environment(),
             provenance=[self.landmarker.provenance]
-            + ([self.au_detector.provenance] if self.au_detector else []),
+            + ([self.au_detector.provenance] if self.au_detector else [])
+            + ([self.pose.provenance] if self.pose is not None else []),
             quality=quality_summary,
             outputs=outputs,
             timing_ms={},
