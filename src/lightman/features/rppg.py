@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -266,6 +267,50 @@ def pulse_events(
                 run.append(e)
     close()
     return events, summary
+
+
+def pulse_agreement(
+    estimates: list[PulseEstimate],
+    references: list[tuple[int, float]],
+    *,
+    min_snr_db: float = 3.0,
+    max_gap_us: int = 8_000_000,
+) -> dict[str, Any] | None:
+    """Compare readings from a watch or oximeter (t_us, bpm) with the nearest usable estimate.
+
+    Returns pairs, mean absolute error and bias (estimate minus reference), or None without
+    references."""
+    if not references:
+        return None
+    good = [e for e in estimates if e.snr_db >= min_snr_db]
+    pairs: list[dict[str, Any]] = []
+    for t, bpm in references:
+        near = min(good, key=lambda e: abs(e.t_us - t), default=None)
+        if near is None or abs(near.t_us - t) > max_gap_us:
+            pairs.append({"t_us": t, "reference_bpm": bpm, "estimate_bpm": None})
+            continue
+        pairs.append(
+            {
+                "t_us": t,
+                "reference_bpm": bpm,
+                "estimate_bpm": round(near.bpm, 1),
+                "snr_db": round(near.snr_db, 1),
+            }
+        )
+    matched = [p for p in pairs if p["estimate_bpm"] is not None]
+    err = [p["estimate_bpm"] - p["reference_bpm"] for p in matched]
+    return {
+        "n_references": len(pairs),
+        "n_matched": len(matched),
+        "mae_bpm": round(float(np.mean(np.abs(err))), 1) if err else None,
+        "bias_bpm": round(float(np.mean(err)), 1) if err else None,
+        "pairs": pairs,
+        "note": (
+            "Agreement between the camera estimate and a contact device over this session. "
+            "Within about 5 bpm is typical for good rPPG conditions; larger errors mean the "
+            "pulse lane should not be trusted for this setup."
+        ),
+    }
 
 
 class StreamingPulse:

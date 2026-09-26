@@ -53,6 +53,15 @@
   let qIndex = $state(-1)
   let asked = $state<{ q: ScriptQuestion; t_us: number; devs: number; latency_ms: number | null }[]>([])
   let noteText = $state('')
+  let watchBpm = $state('')
+  let watchLog = $state<{ t_us: number; bpm: number }[]>([])
+  function addWatch() {
+    const v = Number(watchBpm)
+    if (!last || !isFinite(v) || v < 30 || v > 220) return
+    session?.mark({ kind_of: 'reference', value: v, text: 'watch bpm', t_us: last.t_us })
+    watchLog = [...watchLog, { t_us: last.t_us, bpm: v }]
+    watchBpm = ''
+  }
   let speakingAtAsk: boolean | null = null
   const currentQ = $derived(qIndex >= 0 && qIndex < asked.length ? asked[qIndex] : null)
   function askNext() {
@@ -237,7 +246,7 @@
 
   async function start() {
     if (!videoEl) return
-    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null; ticker = null; answers = []
+    events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null; ticker = null; answers = []; watchLog = []
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
       au: useAu, audio: useAudio, fps: 15, width: 640, jpegQuality: 0.72, subject: subject.trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32) || 'subject_001',
@@ -317,7 +326,13 @@
             {#if lastAnswer}
               <div class="answer">
                 <div class="tiny mono muted">last answer Q{lastAnswer.id.replace(/^q/, '')} ({lastAnswer.category}){lastAnswer.response_latency_ms != null ? `, answered after ${lastAnswer.response_latency_ms.toFixed(0)} ms` : ''}: {lastAnswer.deviations} deviations, {lastAnswer.episodes} episodes{lastAnswer.expression_patterns.length ? `, ${lastAnswer.expression_patterns.slice(0, 3).join(', ')}` : ''}</div>
-                <CueGauge index={lastAnswer.index} control={lastAnswer.control_mean_index} compact />
+                {#if lastAnswer.control_index?.value != null}
+                  <CueGauge index={lastAnswer.control_index} compact />
+                  <div class="tiny muted">against this person's control answers so far{lastAnswer.control_shift?.length ? `; moved most: ${lastAnswer.control_shift.slice(0, 3).map((r) => `${r.signal.replace(/^(blendshape|au)\./, '')} ${r.shift_sd >= 0 ? '+' : ''}${r.shift_sd.toFixed(1)}`).join(', ')}` : ''}</div>
+                {:else}
+                  <CueGauge index={lastAnswer.index} control={lastAnswer.control_mean_index} compact />
+                  <div class="tiny muted">against the calibration; control-referenced scoring starts after two control answers</div>
+                {/if}
                 {#if lastAnswer.index.drivers.length}<div class="tiny">moved with lying: {lastAnswer.index.drivers.join(', ')}</div>{/if}
                 {#if lastAnswer.index.counters.length}<div class="tiny muted">moved against: {lastAnswer.index.counters.join(', ')}</div>{/if}
               </div>
@@ -328,6 +343,14 @@
               </ol>
             {/if}
           {/if}
+        </div>
+      {/if}
+      {#if state === 'running'}
+        <div class="watch">
+          <label for="watch-bpm" class="tiny muted">watch pulse</label>
+          <input id="watch-bpm" type="number" min="30" max="220" placeholder="bpm" bind:value={watchBpm} onkeydown={(e) => e.key === 'Enter' && addWatch()} />
+          <button onclick={addWatch}>log</button>
+          {#if watchLog.length}<span class="tiny mono muted">{watchLog.length} logged{pulseHold?.usable ? `, camera ~${pulseHold.bpm.toFixed(0)}` : ''}</span>{/if}
         </div>
       {/if}
       <div class="tally">
@@ -400,4 +423,7 @@
   .tpl { display: flex; gap: 6px; margin: 4px 0; }
   .tpl select { flex: 1; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 2px 6px; font-size: 11px; }
   .tpl button { padding: 1px 8px; font-size: 11px; }
+  .watch { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .watch input { width: 64px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--text); padding: 2px 6px; font: 12px var(--font-data); }
+  .watch button { padding: 1px 8px; font-size: 11px; }
 </style>

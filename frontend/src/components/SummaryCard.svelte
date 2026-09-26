@@ -57,7 +57,7 @@
     {#each stats as s (s.k)}<div class="stat {s.c}"><span class="mono v">{s.v}</span><span class="k">{s.k}</span></div>{/each}
   </div>
   <div class="col">
-    <div class="eyebrow row-hdr">what happened, in plain words <button class="copy" onclick={copySummary}>{copied ? 'copied' : 'copy summary'}</button></div>
+    <div class="eyebrow row-hdr">what happened, in plain words <span class="acts"><a class="copy" href={`./api/sessions/${detail.analysis?.session_id ?? detail.manifest?.session_id}/share`} target="_blank" rel="noopener">open report</a><button class="copy" onclick={copySummary}>{copied ? 'copied' : 'copy summary'}</button></span></div>
     <ul class="narr">
       {#each narrative as line}<li>{line}</li>{:else}<li class="muted">no narrative in this session (older format)</li>{/each}
     </ul>
@@ -77,6 +77,12 @@
       <div class="chips">{#each exprCounts as [name, n] (name)}<span class="chip expr">{name} <b class="mono">{n}</b></span>{/each}</div>
       <div class="muted small-note">{briefCount} brief (under 500 ms): candidates for what the microexpression literature studies, unconfirmed.</div>
     {:else}<div class="muted">none matched a FACS prototype</div>{/if}
+    {#if detail.analysis?.pulse_check?.n_matched}
+      <div class="muted small-note">pulse check: camera vs watch over {detail.analysis.pulse_check.n_matched} readings, mean error {detail.analysis.pulse_check.mae_bpm} bpm, bias {detail.analysis.pulse_check.bias_bpm >= 0 ? '+' : ''}{detail.analysis.pulse_check.bias_bpm} bpm</div>
+    {/if}
+    {#if detail.analysis?.norms}
+      <div class="muted small-note">personal norms from {detail.analysis.norms.sessions_used} earlier sessions: {detail.analysis.norms.widened.length} signals widened{detail.analysis.norms.drift.length ? `; calibration drift in ${detail.analysis.norms.drift.slice(0, 3).map((d: any) => d.signal.replace(/^(blendshape|au)\./, '')).join(', ')}` : ''}</div>
+    {/if}
     {#if cues?.index}
       <div class="gauge-wrap"><CueGauge index={cues.index} /></div>
     {/if}
@@ -101,7 +107,8 @@
   .stat .k { font-size: 10.5px; color: var(--muted); letter-spacing: 0.03em; text-transform: uppercase; }
   .stat.accent { border-left-color: var(--accent); } .stat.violet { border-left-color: var(--violet); } .stat.cool { border-left-color: var(--cool); } .stat.teal { border-left-color: var(--teal); } .stat.pulse { border-left-color: var(--pulse); }
   .row-hdr { display: flex; justify-content: space-between; align-items: center; }
-  .copy { padding: 1px 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .copy { padding: 1px 8px; font-size: 11px; text-transform: none; letter-spacing: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--text); text-decoration: none; background: none; }
+  .acts { display: flex; gap: 6px; }
   .narr { margin: 6px 0 0; padding-left: 16px; font-size: 13px; line-height: 1.5; max-width: 72ch; }
   .narr li { margin-bottom: 3px; }
   .bars { display: grid; gap: 4px; margin-top: 6px; }

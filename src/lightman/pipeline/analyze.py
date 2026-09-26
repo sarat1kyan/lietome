@@ -24,6 +24,7 @@ from lightman import __version__
 from lightman.audio.vad import SileroVAD
 from lightman.baseline import BaselineSnapshot, compute_state_baselines
 from lightman.baseline.adaptive import AdaptiveConfig
+from lightman.baseline.norms import apply_norms, load_norms, update_norms
 from lightman.baseline.robust import STATE_ALL, STATE_SILENT, STATE_SPEAKING
 from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
@@ -409,6 +410,12 @@ def analyze_video(
         cols["speaking"] = speaking_mask
         builder.set_column("speaking", speaking_mask)
     state_baselines = compute_state_baselines(t_us, quality, signals, cfg.baseline, speaking_mask)
+    norms_report = None
+    norms = load_norms(out_dir, subject_id)
+    if norms:
+        adjusted = {k: apply_norms(v, norms) for k, v in state_baselines.items()}
+        state_baselines = {k: v[0] for k, v in adjusted.items()}
+        norms_report = adjusted[STATE_ALL][1]
     baseline = state_baselines[STATE_ALL]
     if speaking_mask is not None:
         frame_state = np.where(speaking_mask, STATE_SPEAKING, STATE_SILENT).astype(str)
@@ -615,6 +622,7 @@ def analyze_video(
             for k in sorted({e.event_type for e in events})
         },
         "pulse": pulse_summary,
+        "norms": norms_report,
         "inference_ms_per_frame": {
             "mean": float(np.mean(infer_ms)) if infer_ms else None,
             "p50": float(np.percentile(infer_ms, 50)) if infer_ms else None,
@@ -773,6 +781,7 @@ def analyze_video(
         outputs.append(_artifact(report_path, "html"))
 
     timing["total_ms"] = (time.perf_counter() - t0) * 1000
+    update_norms(out_dir, subject_id, session_id, utc_now_iso(), baseline)
     manifest = AnalysisManifest(
         session_id=session_id,
         subject_ids=[subject_id],

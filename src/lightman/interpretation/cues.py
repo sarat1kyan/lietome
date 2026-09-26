@@ -115,6 +115,8 @@ def cue_profile(
     state_baselines: Mapping[str, Mapping[str, tuple[float, float]]] | None = None,
     frame_state: npt.NDArray[np.str_] | None = None,
     whole_session: bool = False,
+    reference_windows: list[tuple[int, int]] | None = None,
+    pitch_offset: float | None = None,
 ) -> dict[str, Any]:
     """Evaluate each cue in ``window`` (start_us, end_us) against baseline statistics.
 
@@ -157,7 +159,7 @@ def cue_profile(
         vt, vz = voice_f0_z
         mm = (vt >= a) & (vt < b) & np.isfinite(vz)
         if mm.sum() >= 10:
-            pz = float(np.mean(vz[mm]))
+            pz = float(np.mean(vz[mm])) - (pitch_offset or 0.0)
     results.append(_row(CUES[0], pz, present=pz is not None and pz >= z_threshold, unit="SD"))
     # lip press: mean of AU24 and mouthPress blendshapes z
     lz = [
@@ -200,6 +202,13 @@ def cue_profile(
         pats = [e for e in events if e.event_type == "expression_pattern"]
         inside = [e for e in pats if e.start_us < b and e.end_us > a]
         outside = [e for e in pats if not (e.start_us < b and e.end_us > a)]
+        if reference_windows:  # compare against the reference answers only
+            out_min = max(1e-6, sum(rb - ra for ra, rb in reference_windows) / 60e6)
+            outside = [
+                e
+                for e in pats
+                if any(e.start_us < rb and e.end_us > ra for ra, rb in reference_windows)
+            ]
 
         def rate_cue(spec: CueSpec, pick: Any) -> None:
             n_in = sum(1 for e in inside if pick(e))

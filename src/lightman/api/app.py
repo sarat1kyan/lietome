@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, WebSocket
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from lightman import __version__
@@ -116,6 +116,12 @@ def create_app(
     ) -> dict[str, Any]:
         wanted = [s for s in signals.split(",") if s]
         return store.features(session_id, table=table, signals=wanted, max_points=max_points)
+
+    @app.get("/api/sessions/{session_id}/share", response_class=HTMLResponse)
+    def get_share(session_id: str) -> HTMLResponse:
+        from lightman.report.share import render_share_report
+
+        return HTMLResponse(render_share_report(store.session_dir(session_id)))
 
     @app.get("/api/sessions/{session_id}/history")
     def get_history(session_id: str) -> dict[str, Any]:

@@ -22,6 +22,7 @@ import numpy as np
 from anyio import to_thread
 from fastapi import WebSocket, WebSocketDisconnect
 
+from lightman.baseline.norms import load_norms
 from lightman.config import LightmanConfig
 from lightman.core.errors import LightmanError
 from lightman.core.logging import get_logger
@@ -142,6 +143,8 @@ async def live_endpoint(
                     )
                     analyzer.has_audio = audio is not None
                     analyzer.audio_stream = audio
+                    analyzer.norms_root = output_root
+                    analyzer.norms = load_norms(output_root, analyzer.subject_id)
                     await ws.send_text(
                         json.dumps({"type": "ready", "session_id": analyzer.session_id})
                     )
@@ -154,6 +157,11 @@ async def live_endpoint(
                             text=str(data.get("text", ""))[:500],
                             category=str(data.get("category", "neutral")),
                             expected=data.get("expected"),
+                            value=(
+                                float(data["value"])
+                                if isinstance(data.get("value"), int | float)
+                                else None
+                            ),
                         )
                     except ValueError as exc:
                         await ws.send_text(
