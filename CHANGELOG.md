@@ -4,6 +4,10 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+### Added (ADR-026)
+- Upper-body and hand tracking (MediaPipe pose lite): shoulder height/tilt, hand speed, hand-to-face distance; self-touch and shrug events; movement cue uses the hands.
+- `lightman bench`: per-machine model timings; `au.live_model = "auto"` picks resnet50 live when fast enough.
+
 ### Added (ADR-025)
 - Subject screen (`#subject`): instructions and questions only, fed live from the operator.
 - Blind validation card game: per-question truth/lie cards shown only to the subject.

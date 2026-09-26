@@ -46,6 +46,18 @@ export function explain(e: LmEvent): Explanation {
         not: 'Not a medical reading and not arousal. Talking, laughing, leaning and lighting change the estimate as much as anything internal.',
         check: 'Was the person still and evenly lit through the window? If the pulse lane is faded around it, the estimate was not trusted.',
       }
+    case 'self_touch':
+      return {
+        measured: 'A hand was at or on the face for a while (pose model: hand points inside or next to the face box).',
+        not: 'Self-touch is one of the most repeated lying myths. Meta-analyses find essentially no effect (self-fidgeting d = -0.01); people touch their face when thinking, tired, itchy or nervous.',
+        check: 'Only a change in how often it happens between control and relevant answers is worth noting, and even then it is weak.',
+      }
+    case 'shrug':
+      return {
+        measured: 'Both shoulders rose above their usual height for a moment.',
+        not: 'Shrugs go with uncertainty, dismissal and emphasis; they do not mark a lie.',
+        check: 'Look at what was being said: a shrug with a confident answer is a mismatch worth a follow-up question.',
+      }
     case 'stillness':
       return {
         measured: 'The head stayed nearly motionless for several seconds, well under this person\'s usual speed.',

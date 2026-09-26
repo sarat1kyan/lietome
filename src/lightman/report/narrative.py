@@ -158,6 +158,13 @@ def build_narrative(
             f"Head gestures: {nods} nods and {shakes} shakes. They mark rhythm, listening, "
             "agreement or disagreement; the movement alone does not say which."
         )
+    touch = [e for e in events if e.event_type == "self_touch"]
+    shrug = [e for e in events if e.event_type == "shrug"]
+    if touch or shrug:
+        lines.append(
+            f"Body: {len(touch)} self-touches of the face and {len(shrug)} shoulder shrugs. "
+            "Self-touch is folk-famous as a lying sign; meta-analyses find no such effect."
+        )
     still = [e for e in events if e.event_type == "stillness"]
     if still:
         longest = max(still, key=lambda e: e.end_us - e.start_us)

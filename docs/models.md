@@ -65,6 +65,13 @@ access; use `lightman models import <id> <file>` for air-gapped installs.
 * Our wrapper (`audio/vad.py`) reproduces the upstream framing; using the raw model without the
   context window silently yields ~0 everywhere (found the hard way; tested).
 
+### mediapipe/pose_landmarker_lite
+
+BlazePose GHUM lite via MediaPipe Tasks (Apache-2.0), 5.8 MB, SHA-256
+`59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a`. 33 body landmarks with
+visibility; Lightman uses shoulders, elbows, wrists and hand points. 5.8 ms per frame on an
+M5 Pro CPU (`lightman bench`).
+
 ## Planned
 
 * AU intensity (not just occurrence) and a measured comparison of OpenGraphAU vs blendshape

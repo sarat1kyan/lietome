@@ -8,6 +8,7 @@ import socket
 from pathlib import Path
 from typing import Annotated
 
+import numpy as np
 import typer
 
 from lightman import __version__
@@ -285,6 +286,47 @@ def serve(
         await asyncio.gather(*(s.serve() for s in servers))
 
     asyncio.run(_run_all())
+
+
+@app.command()
+def bench(
+    image: Annotated[
+        Path | None, typer.Option(help="RGB image with one face (default: bundled test portrait)")
+    ] = None,
+    frames: Annotated[int, typer.Option(min=5, max=500)] = 40,
+    cpu: Annotated[bool, typer.Option("--cpu", help="Do not use GPU providers")] = False,
+) -> None:
+    """Time each model on this machine and pick the live AU model for "auto"."""
+    import cv2
+
+    from lightman.core.bench import run_bench, save_bench
+    from lightman.models import ModelRegistry
+
+    src = (
+        image
+        or Path(__file__).resolve().parents[2]
+        / "tests"
+        / "fixtures"
+        / "portrait_mediapipe_apache2.jpg"
+    )
+    bgr = cv2.imread(str(src)) if src.is_file() else None
+    if bgr is None:
+        typer.secho(
+            "no test image found: pass --image with a photo of one face", fg=typer.colors.YELLOW
+        )
+        rgb = np.full((480, 640, 3), 128, dtype=np.uint8)
+    else:
+        rgb = np.asarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), dtype=np.uint8)
+    res = run_bench(rgb, registry=ModelRegistry(), frames=frames, prefer_gpu=not cpu)
+    for mid, r in res["models"].items():
+        if "error" in r:
+            typer.echo(f"{mid:34s} unavailable: {r['error']}")
+        else:
+            prov = r.get("provider", "")
+            typer.echo(f"{mid:34s} p50 {r['p50_ms']:7.2f} ms  p95 {r['p95_ms']:7.2f} ms  {prov}")
+    typer.echo(f"onnx providers: {', '.join(res['onnx_providers'])}")
+    typer.echo(f"live AU model for 'auto': {res['live_au_model']}")
+    typer.echo(f"saved: {save_bench(res)}")
 
 
 @app.command()

@@ -52,6 +52,19 @@
       "input": "float32 [1,576] (64 context + 512 chunk), state float32 [2,1,128], sr int64 16000",
       "output": "float32 [1,1] speech probability, new state",
       "notes": "Silero VAD v6.2.1 ONNX file pinned by tag. The silero-vad pip package is not used because it depends on torch."
+    },
+    "mediapipe/pose_landmarker_lite": {
+      "filename": "pose_landmarker_lite.task",
+      "url": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+      "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
+      "size_bytes": 5777746,
+      "task": "single-person pose: 33 body landmarks with visibility",
+      "runtime": "mediapipe",
+      "license": "Apache-2.0",
+      "source": "https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker",
+      "input": "RGB image; internal detector + landmark model (lite), float16",
+      "output": "normalized landmarks (33,4): x, y, z, visibility",
+      "notes": "BlazePose GHUM lite. Lightman uses shoulders, elbows, wrists and hand points only."
     }
   }
 }

@@ -45,6 +45,7 @@ export interface HudInput {
   lastIndex: { id: string; value: number | null; band: string } | null
   hints: string[]
   serverPatterns: { name: string; score: number; enter: number }[] | null
+  body: { shoulders: number[][]; elbows: number[][]; wrists: number[][] } | null
   full: boolean
 }
 
@@ -91,6 +92,22 @@ export function drawHud(inp: HudInput) {
     for (let i = 0; i < lm.length; i += 6) ctx.fillRect(map.ox + lm[i] * map.dw - 0.5, map.oy + lm[i + 1] * map.dh - 0.5, 1, 1)
   }
 
+  // ---- upper body: shoulders, arms, hands
+  if (inp.body) {
+    const P = (p: number[]) => [map.ox + p[0] * map.dw, map.oy + p[1] * map.dh]
+    const b = inp.body
+    ctx.strokeStyle = 'rgba(95,184,174,0.7)'; ctx.lineWidth = 2
+    if (b.shoulders.length === 2) { const [a, c] = [P(b.shoulders[0]), P(b.shoulders[1])]; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(c[0], c[1]); ctx.stroke() }
+    for (let i = 0; i < Math.min(b.elbows.length, b.shoulders.length); i++) {
+      const s0 = P(b.shoulders[i]), e0 = P(b.elbows[i]); ctx.beginPath(); ctx.moveTo(s0[0], s0[1]); ctx.lineTo(e0[0], e0[1])
+      if (b.wrists[i]) { const w0 = P(b.wrists[i]); ctx.lineTo(w0[0], w0[1]) }
+      ctx.stroke()
+    }
+    const touching = (v['body.hand_face'] ?? 9) <= 0.1
+    for (const wr of b.wrists) { const q = P(wr); ctx.fillStyle = touching ? C.accent : C.teal; ctx.beginPath(); ctx.arc(q[0], q[1], touching ? 7 : 5, 0, Math.PI * 2); ctx.fill() }
+    ctx.lineWidth = 1
+  }
+
   // ---- face box: corner brackets
   if (inp.bbox) {
     const [x0, y0, x1, y1] = inp.bbox
@@ -101,6 +118,7 @@ export function drawHud(inp: HudInput) {
     for (const [cx, cy, sx, sy] of corners) { ctx.beginPath(); ctx.moveTo(cx, cy + sy * L); ctx.lineTo(cx, cy); ctx.lineTo(cx + sx * L, cy); ctx.stroke() }
     ctx.font = mono(10); ctx.fillStyle = inp.baselineReady ? C.accent : C.cool
     ctx.fillText(inp.baselineReady ? 'TRACKING vs BASELINE' : 'TRACKING, CALIBRATING', bx, by - 9)
+    if ((v['body.hand_face'] ?? 9) <= 0.1) { ctx.fillStyle = C.accent; ctx.fillText('HAND ON FACE', bx + bw - 90, by - 9) }
     ctx.textAlign = 'right'; ctx.fillStyle = C.muted; ctx.fillText(`q ${(v['quality'] ?? 0).toFixed(2)}`, bx + bw, by + bh + 10); ctx.textAlign = 'left'
   }
 

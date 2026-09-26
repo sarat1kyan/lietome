@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from lightman.api.app import create_app
-from lightman.config import BaselineConfig, LightmanConfig, ModelsConfig
+from lightman.config import BaselineConfig, BodyConfig, LightmanConfig, ModelsConfig
 from lightman.pipeline import analyze_video
 from tests.conftest import noise_frames, write_video
 from tests.unit.test_pipeline_fake import FakeLandmarker
@@ -21,6 +21,7 @@ def session_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
     cfg = LightmanConfig(
         baseline=BaselineConfig(window_s=1.0, min_samples=10, good_samples=30),
         models=ModelsConfig(allow_download=False),
+        body=BodyConfig(enabled=False),
     ).model_copy(update={"au": LightmanConfig().au.model_copy(update={"enabled": False})})
     analyze_video(video, root / "out", cfg, landmarker_factory=lambda _c, _r: FakeLandmarker())
     return root / "out"

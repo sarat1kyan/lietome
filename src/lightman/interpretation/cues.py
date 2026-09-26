@@ -47,7 +47,7 @@ CUES: tuple[CueSpec, ...] = (
     ),
     CueSpec(
         "movement",
-        "less head movement (illustrator proxy)",
+        "less hand and head movement (illustrators)",
         "decrease",
         -0.14,
         "DePaulo et al. 2003 (hand illustrators)",
@@ -174,7 +174,10 @@ def cue_profile(
     lp = float(np.mean(lz)) if lz else None
     results.append(_row(CUES[1], lp, present=lp is not None and lp >= z_threshold, unit="SD"))
     # movement: head speed z (decrease = cue)
-    hz = z_of("head.speed_deg_s")
+    # illustrators are hand gestures; the head is the fallback when the hands are not tracked
+    hz = z_of("body.hand_speed")
+    if hz is None:
+        hz = z_of("head.speed_deg_s")
     results.append(_row(CUES[2], hz, present=hz is not None and hz <= -z_threshold, unit="SD"))
     # latency vs control questions
     lat = None

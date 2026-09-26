@@ -26,6 +26,9 @@ from lightman.baseline import BaselineSnapshot, compute_state_baselines
 from lightman.baseline.adaptive import AdaptiveConfig
 from lightman.baseline.norms import apply_norms, load_norms, update_norms
 from lightman.baseline.robust import STATE_ALL, STATE_SILENT, STATE_SPEAKING
+from lightman.body.events import detect_body_events
+from lightman.body.features import BodyFeatures
+from lightman.body.pose import default_pose_factory
 from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
 from lightman.core.errors import LightmanError, UnsupportedMediaError
@@ -231,6 +234,7 @@ def analyze_video(
     landmarker_factory: LandmarkerFactory | None = None,
     au_factory: AUDetectorFactory | None = None,
     vad_factory: VADFactory | None = None,
+    pose_factory: Any = None,
     registry: ModelRegistry | None = None,
     subject_id: str = "subject_001",
 ) -> AnalysisResult:
@@ -269,6 +273,8 @@ def analyze_video(
     au_detector: AUDetector | None = None
     if cfg.au.enabled:
         au_detector = (au_factory or default_au_factory)(cfg, registry)
+    pose = (pose_factory or default_pose_factory)(cfg, registry)
+    body_feat = BodyFeatures()
     timing["model_load_ms"] = (time.perf_counter() - t1) * 1000
 
     # ---- decode + features
@@ -310,6 +316,12 @@ def analyze_video(
                 bbox_px = (bbox[0] * w, bbox[1] * h, bbox[2] * w, bbox[3] * h)
                 blur, luma = frame_quality_terms(fr.rgb, bbox_px)
                 skin = skin_means(fr.rgb, face.landmarks, w, h) if cfg.pulse.enabled else None
+                body = None
+                if pose is not None and fr.index % cfg.body.stride == 0:
+                    obs = pose.process(fr.rgb, fr.t_us)
+                    body = body_feat.compute(
+                        obs.landmarks if obs else None, bbox, fr.t_us, w / max(1, h)
+                    )
                 aus = None
                 if (
                     au_detector is not None
@@ -339,6 +351,7 @@ def analyze_video(
                     blur=blur,
                     luma=luma,
                     skin=skin,
+                    body=body,
                 )
             else:
                 builder.add_frame(
@@ -358,6 +371,8 @@ def analyze_video(
         landmarker.close()
         if au_detector is not None:
             au_detector.close()
+        if pose is not None:
+            pose.close()
     timing["decode_and_landmarks_ms"] = (time.perf_counter() - t2) * 1000
     cols = builder.to_numpy()
     n_frames = len(builder)
@@ -470,6 +485,20 @@ def analyze_video(
             id_start=700_000,
             nod_min_deg=cfg.gestures.nod_min_deg,
             shake_min_deg=cfg.gestures.shake_min_deg,
+        )
+    sh = baseline.signals.get("body.shoulder_y")
+    if pose is not None:
+        extra += detect_body_events(
+            t_us=t_us,
+            hand_face=signals["body.hand_face"],
+            shoulder_y=signals["body.shoulder_y"],
+            shoulder_center=sh.center if sh is not None else math.nan,
+            shoulder_scale=sh.scale if sh is not None else math.nan,
+            start_us=baseline.window_end_us,
+            subject_id=subject_id,
+            extractor_id=pose.provenance.extractor_id,
+            baseline_quality=baseline.quality,
+            id_start=980_000,
         )
     sp_base = baseline.signals.get("head.speed_deg_s")
     if sp_base is not None and math.isfinite(sp_base.center):
@@ -792,7 +821,8 @@ def analyze_video(
         environment=snapshot_environment(),
         provenance=[prov]
         + ([au_detector.provenance] if au_detector is not None else [])
-        + ([audio.provenance] if audio is not None else []),
+        + ([audio.provenance] if audio is not None else [])
+        + ([pose.provenance] if pose is not None else []),
         quality=quality_summary,
         outputs=outputs,
         timing_ms={k: round(v, 2) for k, v in timing.items()},
