@@ -15,7 +15,7 @@
   <div class="hdr"><span class="eyebrow">interview protocol</span><span class="muted">click a row to seek</span></div>
   <div class="wrap">
   <table class="mono">
-    <thead><tr><th>#</th><th>cat</th><th class="txt">question</th><th>asked</th><th>latency</th><th>speech</th><th>dev/min</th><th>max SD</th><th>episodes</th><th>blink/min</th><th>pitch SD</th><th class="txt">signals</th><th class="txt">expressions</th><th>cues</th><th>index</th></tr></thead>
+    <thead><tr><th>#</th><th>cat</th><th class="txt">question</th><th>asked</th><th>latency</th><th>speech</th><th>dev/min</th><th>max SD</th><th>episodes</th><th>blink/min</th><th>pitch SD</th><th class="txt">signals</th><th class="txt">expressions</th><th>cues</th><th>index</th><th>vs control</th></tr></thead>
     <tbody>
       {#each qs as q (q.id)}
         <tr class:rel={q.category === 'relevant'} class:ctl={q.category === 'control'} onclick={() => onseek(q.start_us)}>
@@ -27,6 +27,7 @@
           <td class="txt sans expr">{(q.expression_patterns ?? []).join(', ') || '-'}</td>
           <td title={q.cues ? q.cues.cues.filter((c: any) => c.present).map((c: any) => c.name).join(', ') || 'none present' : ''}>{q.cues ? `${q.cues.present}/${q.cues.evaluated}` : '-'}</td>
           <td title={q.cue_index?.text ?? ''} style:color={idxColor(q.cue_index?.value ?? null)}>{q.cue_index?.value != null ? `${Math.round(q.cue_index.value)} ${q.cue_index.band}` : '-'}</td>
+          <td title={(q.control_shift ?? []).map((r: any) => `${r.signal} ${r.shift_sd >= 0 ? '+' : ''}${r.shift_sd} SD`).join(', ')} style:color={idxColor(q.control_index?.value ?? null)}>{q.control_index?.value != null ? `${Math.round(q.control_index.value)} ${q.control_index.band}` : '-'}</td>
         </tr>
       {/each}
     </tbody>

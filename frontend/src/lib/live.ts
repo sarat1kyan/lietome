@@ -28,6 +28,7 @@ export interface LiveQuestionSummaryMsg {
   type: 'question_summary'; id: string; text: string; category: string; start_us: number; end_us: number
   response_latency_ms: number | null; deviations: number; episodes: number; expression_patterns: string[]
   cues: any; index: CueIndex; control_mean_index: number | null
+  control_index?: CueIndex | null; control_shift?: { signal: string; shift_sd: number }[]
 }
 export interface LiveBaselineMsg { type: 'baseline'; frames_used: number; quality: number; states: Record<string, { frames_used: number; quality: number }>; signals?: Record<string, { center: number; scale: number }> }
 export interface LiveBaselineUpdateMsg { type: 'baseline_update'; signals: Record<string, { center: number; scale: number }> }
@@ -156,7 +157,7 @@ export class LiveSession {
     this.audioNode.connect(this.audioCtx.destination)
   }
 
-  mark(m: { kind_of: 'question' | 'note' | 'end'; id?: string; text?: string; category?: string; expected?: string | null; t_us: number }) {
+  mark(m: { kind_of: 'question' | 'note' | 'end' | 'reference'; id?: string; text?: string; category?: string; expected?: string | null; value?: number; t_us: number }) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'mark', ...m }))
   }
 

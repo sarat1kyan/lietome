@@ -288,6 +288,21 @@ def serve(
 
 
 @app.command()
+def report(
+    session: Annotated[
+        Path, typer.Argument(exists=True, file_okay=False, help="Session directory")
+    ],
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Output HTML file")] = None,
+) -> None:
+    """Write a standalone, shareable HTML report for a finished session."""
+    from lightman.report.share import render_share_report
+
+    dest = out or session / "share.html"
+    dest.write_text(render_share_report(session), "utf-8")
+    typer.echo(f"report: {dest}")
+
+
+@app.command()
 def doctor() -> None:
     """Inspect the runtime environment (OS, CPU, accelerators, key package versions)."""
     from lightman.core.env import snapshot_environment

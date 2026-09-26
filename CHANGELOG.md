@@ -4,6 +4,12 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+### Added (ADR-024)
+- Control-referenced cue index: each answer against the other control answers (live and saved).
+- Personal norms across a subject's sessions: narrow calibrations widened, drift reported.
+- Pulse check against watch readings logged during the session.
+- Shareable standalone HTML report (`/api/sessions/{id}/share`, `lightman report`).
+
 ### Fixed
 - Gaze-away and the embarrassment gaze condition measured from the calibration center.
 - Muted microphone now raises a hint and a session warning.

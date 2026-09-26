@@ -12,6 +12,7 @@ import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -19,6 +20,7 @@ import numpy.typing as npt
 
 from lightman import __version__
 from lightman.baseline.adaptive import AdaptiveBaseline
+from lightman.baseline.norms import apply_norms, update_norms
 from lightman.baseline.robust import STATE_ALL, STATE_SILENT, STATE_SPEAKING
 from lightman.config import LightmanConfig
 from lightman.core.env import snapshot_environment
@@ -45,7 +47,13 @@ from lightman.features.derived import (
 from lightman.features.eyes import eye_aspect_ratios
 from lightman.features.head_pose import head_pose_from_matrix
 from lightman.features.quality import face_quality
-from lightman.features.rppg import PulseEstimate, StreamingPulse, pulse_events, skin_means
+from lightman.features.rppg import (
+    PulseEstimate,
+    StreamingPulse,
+    pulse_agreement,
+    pulse_events,
+    skin_means,
+)
 from lightman.features.smoothing import StreamingMedian
 from lightman.features.table import FeatureTableBuilder
 from lightman.interpretation.cues import cue_profile
@@ -66,6 +74,7 @@ from lightman.pipeline.analyze import (
     _new_session_id,
 )
 from lightman.protocol import Marker, summarize_protocol
+from lightman.protocol.control import control_referenced
 from lightman.report.narrative import build_narrative, cues_narrative, protocol_narrative
 from lightman.schema import AnalysisManifest, Event, MediaInfo, OutputArtifact, QualitySummary
 from lightman.schema.media import VideoStreamInfo
@@ -164,6 +173,10 @@ class LiveAnalyzer:
         self.skin_from_client = 0
         self.skin_from_jpeg = 0
         self._speech_heard = False
+        self.norms: dict[str, Any] | None = None
+        """This subject's norms from earlier sessions (set by the caller before frames arrive)."""
+        self.norms_root: Path | None = None
+        self.norms_report: dict[str, Any] | None = None
         self._speaking_phase_us = 0
         self._last_frame_t: int | None = None
         self.adaptive: AdaptiveBaseline | None = None
@@ -487,6 +500,12 @@ class LiveAnalyzer:
     def _arm_detectors(self) -> None:
         snap = self.baseline.snapshot
         assert snap is not None  # noqa: S101 - set by update()/finalize()
+        if self.norms:
+            snap, self.norms_report = apply_norms(snap, self.norms)
+            self.baseline.snapshot = snap
+            self.baseline.state_snapshots = {
+                k: apply_norms(v, self.norms)[0] for k, v in self.baseline.state_snapshots.items()
+            }
         ext = self.landmarker.provenance.extractor_id
         # Eye-openness excursions are blinks/closures; the blink detector owns them. The offline
         # path excludes eye deviations inside blinks; live simply does not score eye.* here.
@@ -677,6 +696,31 @@ class LiveAnalyzer:
                 "control_mean_index": (round(float(np.mean(ctrl_idx)), 1) if ctrl_idx else None),
             }
         )
+        # against the control answers given so far (the latest answer excluded from its own pool)
+        spans = [
+            SimpleNamespace(
+                id=m.id or f"q{i + 1}", category=m.category, start_us=m.t_us, end_us=window_end(i)
+            )
+            for i, m in enumerate(qs[:-1])
+        ] + [
+            SimpleNamespace(
+                id=q.id or f"q{len(qs)}", category=q.category, start_us=q.t_us, end_us=end_us
+            )
+        ]
+        ctl = control_referenced(
+            questions=spans,
+            t_us=t,
+            quality=cols["quality"].astype(np.float64),
+            signals=sig,
+            calibration_scale=scale,
+            events=self.events,
+            blink_times_us=blinks,
+            voice_f0_z=f0z,
+            latencies={s.id: latency(s.start_us, s.end_us) for s in spans},
+        )
+        latest = ctl.get(spans[-1].id)
+        out["control_index"] = _nan_to_none(latest["index"]) if latest else None
+        out["control_shift"] = latest["shift"] if latest else []
         return out
 
     def baseline_view(self, signals: list[str]) -> dict[str, dict[str, float]]:
@@ -818,6 +862,20 @@ class LiveAnalyzer:
                 if pulse_summary is not None
                 else None
             ),
+            "norms": self.norms_report,
+            "pulse_check": (
+                pulse_agreement(
+                    self.pulse.estimates,
+                    [
+                        (m.t_us, float(m.value))
+                        for m in self.markers
+                        if m.kind == "reference" and m.value is not None
+                    ],
+                    min_snr_db=self.cfg.pulse.min_snr_db,
+                )
+                if self.pulse is not None
+                else None
+            ),
             **live_stats,
         }
         (session_dir / "analysis.json").write_text(json.dumps(_nan_to_none(analysis), indent=2))
@@ -897,6 +955,7 @@ class LiveAnalyzer:
             "session_start_us": snap.window_end_us,
             "state_baselines": state_cs,
             "frame_state": frame_state,
+            "quality": cols["quality"].astype(np.float64),
         }
         analysis["session_cues"] = cue_profile(
             whole_session=True,
@@ -974,6 +1033,14 @@ class LiveAnalyzer:
                 signals_to_plot=self.cfg.events.signals,
             )
             outputs.append(_artifact(report_path, "html"))
+        if self.norms_root is not None and self.baseline.snapshot is not None:
+            update_norms(
+                self.norms_root,
+                self.subject_id,
+                self.session_id,
+                utc_now_iso(),
+                self.baseline.snapshot,
+            )
         manifest = AnalysisManifest(
             session_id=self.session_id,
             subject_ids=[self.subject_id],

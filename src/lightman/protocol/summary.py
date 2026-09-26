@@ -26,6 +26,7 @@ import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict, Field
 
 from lightman.interpretation.cues import cue_profile
+from lightman.protocol.control import control_referenced
 from lightman.schema import Event
 
 Category = Literal["control", "relevant", "neutral"]
@@ -35,12 +36,15 @@ Expected = Literal["truth", "lie"] | None
 class Marker(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    kind: Literal["question", "note", "end"]
+    kind: Literal["question", "note", "end", "reference"]
     t_us: int = Field(ge=0)
     id: str = ""
     text: str = ""
     category: Category = "neutral"
     expected: Expected = None
+    value: float | None = Field(
+        default=None, description="kind 'reference': a pulse reading (bpm) from a watch or oximeter"
+    )
 
 
 class QuestionSummary(BaseModel):
@@ -66,6 +70,10 @@ class QuestionSummary(BaseModel):
     expression_patterns: list[str] = Field(default_factory=list)
     cues: dict[str, Any] | None = None
     cue_index: dict[str, Any] | None = None
+    control_index: dict[str, Any] | None = None
+    """Cue index against this person's other control answers (leave-one-out)."""
+    control_shift: list[dict[str, Any]] = Field(default_factory=list)
+    control_cues: dict[str, Any] | None = None
 
 
 class ProtocolSummary(BaseModel):
@@ -237,6 +245,29 @@ def summarize_protocol(
             for r in out
         ]
         out = [r.model_copy(update={"cue_index": (r.cues or {}).get("index")}) for r in out]
+        ctl = control_referenced(
+            questions=out,
+            t_us=t_us,
+            quality=np.asarray(cue_inputs.get("quality", np.ones(t_us.shape)), dtype=float),
+            signals=cue_inputs["signals"],
+            calibration_scale=cue_inputs["baseline_scale"],
+            events=events,
+            blink_times_us=blinks,
+            voice_f0_z=voice_f0_z,
+            latencies={r.id: r.response_latency_ms for r in out},
+        )
+        out = [
+            r.model_copy(
+                update={
+                    "control_index": ctl[r.id]["index"],
+                    "control_shift": ctl[r.id]["shift"],
+                    "control_cues": ctl[r.id]["cues"],
+                }
+            )
+            if r.id in ctl
+            else r
+            for r in out
+        ]
     by_cat: dict[str, dict[str, float | int | None]] = {}
     for cat in ("control", "relevant", "neutral"):
         rows = [r for r in out if r.category == cat]
@@ -327,10 +358,16 @@ def summarize_protocol(
 
 def possibility_summary(questions: list[QuestionSummary]) -> dict[str, Any] | None:
     """Relevant-vs-control view of the cue index. Wording stays at "possibility"; the
-    numbers are shares of weak cues, never probabilities."""
-    rows = [
-        (q, q.cue_index["value"]) for q in questions if q.cue_index and q.cue_index.get("value")
-    ]
+    numbers are shares of weak cues, never probabilities. Uses the control-referenced index
+    (each answer against the other control answers) when every scored question has one."""
+    use_ctl = all(q.control_index and q.control_index.get("value") for q in questions) and any(
+        q.control_index for q in questions
+    )
+
+    def idx(q: QuestionSummary) -> dict[str, Any] | None:
+        return q.control_index if use_ctl else q.cue_index
+
+    rows = [(q, idx(q)["value"]) for q in questions if idx(q) and idx(q).get("value")]  # type: ignore[index, union-attr]
     if not rows:
         return None
     rel = [v for q, v in rows if q.category == "relevant"]
@@ -341,8 +378,8 @@ def possibility_summary(questions: list[QuestionSummary]) -> dict[str, Any] | No
             "id": q.id,
             "category": q.category,
             "index": v,
-            "band": q.cue_index["band"] if q.cue_index else None,
-            "drivers": (q.cue_index or {}).get("drivers", []),
+            "band": (idx(q) or {}).get("band"),
+            "drivers": (idx(q) or {}).get("drivers", []),
         }
         for q, v in rows
     ]
@@ -370,9 +407,14 @@ def possibility_summary(questions: list[QuestionSummary]) -> dict[str, Any] | No
         "permutation_p": p_perm,
         "top_question": top_q.id,
         "top_index": top_v,
-        "top_band": top_q.cue_index["band"] if top_q.cue_index else None,
+        "top_band": (idx(top_q) or {}).get("band"),
+        "basis": "control answers" if use_ctl else "calibration",
     }
-    parts = []
+    parts = [
+        "Scored against this person's other control answers."
+        if use_ctl
+        else "Scored against the calibration (fewer than two control answers)."
+    ]
     if rel and ctl:
         d = out["delta"]
         ci_txt = f", 95% bootstrap interval {ci[0]:+.0f} to {ci[1]:+.0f}" if ci else ""
@@ -395,8 +437,8 @@ def possibility_summary(questions: list[QuestionSummary]) -> dict[str, Any] | No
     parts.append(
         f"Highest: Q{top_q.id.lstrip('q')} ({top_v:.0f}/100, {out['top_band']})"
         + (
-            ": " + ", ".join((top_q.cue_index or {}).get("drivers", [])[:3])
-            if (top_q.cue_index or {}).get("drivers")
+            ": " + ", ".join((idx(top_q) or {}).get("drivers", [])[:3])
+            if (idx(top_q) or {}).get("drivers")
             else ""
         )
         + "."

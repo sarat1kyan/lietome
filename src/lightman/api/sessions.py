@@ -52,6 +52,9 @@ class SessionStore:
             raise SessionNotFoundError(f"unknown session {session_id}")
         return d
 
+    def session_dir(self, session_id: str) -> Path:
+        return self._dir(session_id)
+
     def list_sessions(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         if not self.root.is_dir():
