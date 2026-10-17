@@ -24,6 +24,7 @@ core package or its default download manifest.
 | uvicorn | BSD-3 | |
 | python-multipart | Apache-2.0 | upload parsing |
 | svelte 5, vite 8, @sveltejs/vite-plugin-svelte, svelte-check, typescript, vite-plugin-singlefile (frontend build only) | MIT (typescript: Apache-2.0) | not shipped as Python deps; build output is static files |
+| faster-whisper (optional `asr` extra) | MIT | Pulls ctranslate2 (MIT), tokenizers (Apache-2.0), huggingface-hub (Apache-2.0), onnxruntime (MIT). Whisper base weights: MIT (OpenAI), CTranslate2 conversion by Systran. |
 | librosa 1.0 | ISC | F0 (pyin). Pulls numba (BSD-2), llvmlite (BSD-2), scikit-learn (BSD-3), scipy (BSD-3), soundfile (BSD-3), soxr (LGPL-2.1+, dynamically linked), pooch (BSD-3), msgpack (Apache-2.0), joblib (BSD-3), lazy_loader (BSD-3), decorator (BSD-2). First pyin call pays a ~25 s numba JIT on M5 Pro. |
 
 Dev tools (pytest MIT, hypothesis MPL-2.0, ruff MIT, mypy MIT, pre-commit MIT, pip-audit

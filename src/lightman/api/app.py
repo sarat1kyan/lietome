@@ -8,6 +8,7 @@ is deleted after analysis. No absolute paths are returned.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import tempfile
@@ -148,6 +149,44 @@ def create_app(
             raise HTTPException(status_code=422, detail="ranges must have end > start")
         return store.compare(session_id, (a0, a1), (b0, b1))
 
+    @app.get("/api/sessions/{session_id}/media-info")
+    def get_media_info(session_id: str) -> Any:
+        info = store.read_json(session_id, "media.json")
+        if info is None:
+            raise HTTPException(status_code=404, detail="no recording")
+        return info
+
+    @app.get("/api/sessions/{session_id}/transcript")
+    def get_transcript(session_id: str) -> Any:
+        return store.read_json(session_id, "transcript.json") or {"status": "none"}
+
+    @app.post("/api/sessions/{session_id}/media", status_code=201)
+    async def upload_media(
+        session_id: str,
+        file: Annotated[UploadFile, File()],
+        offset_us: Annotated[int, Form()] = 0,
+    ) -> dict[str, Any]:
+        """Attach a recording made in the browser during a live session (opt-in)."""
+        d = store.session_dir(session_id)
+        ctype = (file.content_type or "").split(";")[0]
+        ext = {"video/webm": "webm", "video/mp4": "mp4"}.get(ctype)
+        if ext is None:
+            raise HTTPException(status_code=415, detail="expected video/webm or video/mp4")
+        dest = d / f"media.{ext}"
+        size = 0
+        with dest.open("wb") as fh:
+            while chunk := await file.read(1 << 20):
+                size += len(chunk)
+                if size > cfg.limits.max_file_bytes:
+                    fh.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(status_code=413, detail="recording too large")
+                fh.write(chunk)
+        (d / "media.json").write_text(
+            json.dumps({"file": dest.name, "offset_us": int(offset_us), "bytes": size})
+        )
+        return {"file": dest.name, "bytes": size}
+
     @app.get("/api/sessions/{session_id}/pulse")
     def get_pulse(session_id: str) -> Any:
         return store.read_json(session_id, "pulse.json") or {"t_us": [], "bpm": [], "snr_db": []}
@@ -163,7 +202,8 @@ def create_app(
 
     @app.get("/api/sessions/{session_id}/media")
     def get_media(session_id: str) -> FileResponse:
-        return FileResponse(store.media(session_id), media_type="video/mp4")
+        p = store.media(session_id)
+        return FileResponse(p, media_type="video/webm" if p.suffix == ".webm" else "video/mp4")
 
     @app.post("/api/analyze", status_code=202)
     def analyze(

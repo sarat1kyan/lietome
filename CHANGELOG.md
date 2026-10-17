@@ -4,6 +4,10 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+### Added (ADR-027)
+- Local speech-to-text (faster-whisper, Whisper base, optional `asr` extra) with word timing; hedge and denial markers; denials aligned with face and body events; answer text per question.
+- Opt-in video recording in the live view; replay with the HUD over recorded video in the sessions view.
+
 ### Added (ADR-026)
 - Upper-body and hand tracking (MediaPipe pose lite): shoulder height/tilt, hand speed, hand-to-face distance; self-touch and shrug events; movement cue uses the hands.
 - `lightman bench`: per-machine model timings; `au.live_model = "auto"` picks resnet50 live when fast enough.

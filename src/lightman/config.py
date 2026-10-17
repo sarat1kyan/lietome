@@ -236,6 +236,17 @@ class BodyConfig(BaseModel):
     stride: int = Field(default=1, ge=1, description="Run the pose model on every Nth frame")
 
 
+class SpeechConfig(BaseModel):
+    """Local speech-to-text (faster-whisper, optional extra `asr`) with word timing."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    model_group: str = Field(default="whisper__base", pattern="^whisper__base$")
+    compute_type: str = Field(default="int8", pattern="^(int8|float16|float32)$")
+    language: str | None = Field(default=None, description="ISO code, or None to detect")
+
+
 class GazeConfig(BaseModel):
     """Sustained gaze-away episodes from the eye-look proxy and head yaw."""
 
@@ -283,6 +294,7 @@ class LightmanConfig(BaseModel):
     novelty: NoveltyConfig = NoveltyConfig()
     gaze: GazeConfig = GazeConfig()
     body: BodyConfig = BodyConfig()
+    speech: SpeechConfig = SpeechConfig()
     storage: StorageConfig = StorageConfig()
     privacy: PrivacyConfig = PrivacyConfig()
     models: ModelsConfig = ModelsConfig()

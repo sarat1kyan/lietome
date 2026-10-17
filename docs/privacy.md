@@ -12,11 +12,14 @@ Lightman processes biometric behavioral data. Defaults are local-only and minima
 | Blendshape coefficients, head pose, EAR, quality | `features.parquet` | Yes (session dir). |
 | Subject norms (median calibration center/spread per signal, last 20 sessions) | `<output>/_subjects/<id>.json` | Yes. Delete the file to reset. |
 | Skin color means (3 floats/frame over forehead and cheeks, for the pulse estimate) | `features.parquet`, `pulse.json` | Yes (session dir). Not an identifier; disable with `[pulse] enabled = false`. |
+| Session audio (live) | Process memory (int16), transcribed after the session, then released. | No. Only the transcript is kept. |
+| Transcript (words with times, hedges, denials) | `transcript.json`, answer text in `protocol.json` | Yes (session dir). Disable with `[speech] enabled = false`. |
+| Video recording (live, opt-in) | `media.webm` + `media.json` in the session dir | Only when the operator ticks "record video". Delete the files to remove it. |
 | Face crops | `thumbnails/*.jpg` and inline in `report.html` at event peaks. | Yes, if `storage.event_thumbnails = true` (default). Disable with `--no-thumbnails`. |
 | File name + SHA-256 of input | `metadata.json`, `manifest.json` | Yes. Absolute paths are never stored. |
 | Subject identity | Anonymous id (`subject_001`) chosen by the operator. | Yes. |
 | Environment (OS, CPU, package versions) | `manifest.json` | Yes. No hostnames or usernames. |
-| Network | Only `lightman models download` contacts the model host, and only on request. | - |
+| Network | Models are fetched from their pinned URLs on first use (or with `lightman models download`), SHA-256 verified. Set `models.allow_download = false` to forbid downloads. Nothing else leaves the machine. | - |
 
 There is no telemetry, no crash reporting, no analytics.
 

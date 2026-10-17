@@ -40,6 +40,9 @@ dependencies = [
 [project.optional-dependencies]
 # Opt-in extras. Only declare what is used.
 cuda = ["onnxruntime-gpu>=1.20; sys_platform != 'darwin'"]  # NVIDIA machines; replaces CPU onnxruntime
+asr = [
+    "faster-whisper>=1.1",
+]
 
 [dependency-groups]
 dev = [
@@ -120,7 +123,7 @@ files = ["src/lightman"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["mediapipe.*", "av.*", "cv2.*", "pyarrow.*", "onnxruntime.*"]
+module = ["mediapipe.*", "av.*", "cv2.*", "pyarrow.*", "onnxruntime.*", "faster_whisper", "faster_whisper.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest

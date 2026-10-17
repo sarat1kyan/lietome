@@ -14,6 +14,7 @@
   import KeyMoments from './components/KeyMoments.svelte'
   import ComparePanel from './components/ComparePanel.svelte'
   import HistoryCard from './components/HistoryCard.svelte'
+  import TranscriptPanel from './components/TranscriptPanel.svelte'
   import SubjectView from './components/SubjectView.svelte'
   const subjectMode = typeof location !== 'undefined' && location.hash === '#subject'
 
@@ -128,6 +129,7 @@
       {#if compare}
         <ComparePanel sessionId={current.session_id} a={compare.a} b={compare.b} {protocol} onclear={() => (compare = null)} onpreset={(a, b) => (compare = { a, b })} />
       {/if}
+      <TranscriptPanel sessionId={current.session_id} {playhead} onseek={seekTo} />
       <KeyMoments {events} session={current} onpick={pick} />
       <ProtocolTable {protocol} onseek={seekTo} />
       <SummaryCard {detail} {events} />
@@ -167,7 +169,7 @@
   .top-right { display: flex; gap: 12px; align-items: center; font-size: 12px; }
   .keys { font-size: 10.5px; color: var(--faint); }
   .chip { border: 1px solid var(--accent); color: var(--accent); padding: 1px 7px; border-radius: 10px; font-size: 11px; }
-  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto auto auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
+  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto auto auto auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
   .empty { padding: 48px; color: var(--muted); }
   .error { margin: 12px; padding: 10px 12px; border: 1px solid var(--warn); color: var(--warn); border-radius: var(--radius); }
   code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; }
