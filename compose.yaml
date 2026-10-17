@@ -1,0 +1,37 @@
+# Lightman in Docker. Everything here is named and labelled "lightman" so it is easy to find
+# in Docker Desktop next to other projects.
+#   docker compose up --build        start; the URL with the access token is in the logs
+#   docker compose logs lightman     show the URL again
+#   docker compose down              stop (volumes stay)
+#   docker compose down -v           stop and delete the sessions and model volumes
+name: lightman
+
+services:
+  lightman:
+    build:
+      context: .
+      labels:
+        dev.lightman.project: lightman
+    image: lightman:latest
+    container_name: lightman
+    command: ["serve", "--host", "0.0.0.0", "--no-tls", "--local-port", "-1", "--advertise", "localhost", "-o", "/work/output"]
+    ports:
+      - "127.0.0.1:8710:8710"  # this machine only; browsers allow the camera on http://localhost
+    volumes:
+      - lightman-output:/work/output
+      - lightman-models:/models
+    labels:
+      dev.lightman.project: lightman
+    restart: "no"
+
+volumes:
+  lightman-output:
+    name: lightman-output
+    labels:
+      dev.lightman.project: lightman
+      dev.lightman.contents: "session results (features, events, thumbnails)"
+  lightman-models:
+    name: lightman-models
+    labels:
+      dev.lightman.project: lightman
+      dev.lightman.contents: "downloaded model weights (SHA-256 verified)"

@@ -213,6 +213,13 @@ def serve(
         bool | None, typer.Option("--tls/--no-tls", help="Default: on when not bound to localhost")
     ] = None,
     token: Annotated[str | None, typer.Option(help="Access token; generated when omitted")] = None,
+    advertise: Annotated[
+        str | None,
+        typer.Option(
+            help="Host name to print in the URL instead of this machine's addresses "
+            "(in Docker: localhost, the published port's host)"
+        ),
+    ] = None,
     local_port: Annotated[
         int,
         typer.Option(
@@ -243,7 +250,7 @@ def serve(
         cert, key = ensure_self_signed_cert([*lan_addresses(), socket.gethostname()])
         certfile, keyfile = str(cert), str(key)
         scheme = "https"
-    hosts = ["127.0.0.1"] if local_only else lan_addresses() or [host]
+    hosts = [advertise] if advertise else ["127.0.0.1"] if local_only else lan_addresses() or [host]
     q = f"/?token={tok}" if tok else "/"
     for h in hosts:
         typer.echo(f"Lightman UI: {scheme}://{h}:{port}{q}")
