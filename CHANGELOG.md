@@ -4,6 +4,9 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+### Added
+- `compose.yaml`: project `lightman`, container `lightman`, labelled volumes `lightman-output` and `lightman-models`; OCI labels on the image; `serve --advertise` for the printed host.
+
 ### Added (ADR-027)
 - Local speech-to-text (faster-whisper, Whisper base, optional `asr` extra) with word timing; hedge and denial markers; denials aligned with face and body events; answer text per question.
 - Opt-in video recording in the live view; replay with the HUD over recorded video in the sessions view.

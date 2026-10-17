@@ -55,6 +55,22 @@ Measured on Apple M5 Pro (CPU only): **3.5 ms/frame** landmarks + blendshapes, *
 AU detector (resnet50) or **17-20 ms** (resnet18). A 20 s 640x480 clip takes 3.4 s without AUs,
 58 s with the default AU model. See `docs/benchmarks.md`.
 
+### Docker
+
+```bash
+docker compose up --build        # project "lightman": image lightman:latest, container lightman
+docker compose logs lightman     # the access URL with its token
+docker compose down              # stop; add -v to also delete the lightman-output and lightman-models volumes
+```
+
+Everything Docker creates for Lightman is named `lightman*` and carries the label
+`dev.lightman.project=lightman`:
+
+```bash
+docker images --filter label=dev.lightman.project=lightman
+docker volume ls --filter label=dev.lightman.project=lightman
+```
+
 ### Web UI
 
 ```bash
