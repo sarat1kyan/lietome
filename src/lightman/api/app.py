@@ -244,18 +244,21 @@ def create_app(
             from lightman.pipeline import analyze_video
 
             jobs.update(jid, state="running")
+            final: dict[str, Any]
             try:
                 result = analyze_video(dest, output_root, run_cfg)
                 if keep_media:
                     shutil.move(str(dest), result.session_dir / "media.mp4")
-                jobs.update(jid, state="done", session_id=result.session_id)
+                final = {"state": "done", "session_id": result.session_id}
             except LightmanError as exc:
-                jobs.update(jid, state="failed", error=str(exc))
+                final = {"state": "failed", "error": str(exc)}
             except Exception as exc:
                 log.exception("analyze_job_crashed")
-                jobs.update(jid, state="failed", error=f"internal error: {type(exc).__name__}")
+                final = {"state": "failed", "error": f"internal error: {type(exc).__name__}"}
             finally:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
+            # publish the final state only after the upload is cleaned up
+            jobs.update(jid, **final)
 
         threading.Thread(target=work, name=f"analyze-{jid}", daemon=True).start()
         return {"job_id": jid, "state": "queued"}
