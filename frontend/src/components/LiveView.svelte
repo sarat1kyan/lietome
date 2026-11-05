@@ -216,6 +216,7 @@
       hints: m.hints ?? [],
       serverPatterns: m.patterns ?? null,
       body: m.body ?? null,
+      affect: m.affect ?? null,
       full: showOverlay,
     })
   }

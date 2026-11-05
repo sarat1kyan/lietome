@@ -64,6 +64,10 @@ class ClientStore:
                 out.append(d)
         return out
 
+    def session_dirs(self, code: str) -> list[Path]:
+        self._path(code)
+        return self._sessions_of(code)
+
     def get(self, code: str) -> Client | None:
         p = self._path(code)
         if not p.is_file():

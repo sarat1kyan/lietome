@@ -45,6 +45,7 @@ export interface HudInput {
   lastIndex: { id: string; value: number | null; band: string } | null
   hints: string[]
   mode?: 'live' | 'replay'
+  affect?: { valence: number; arousal: number } | null
   serverPatterns: { name: string; score: number; enter: number }[] | null
   body: { shoulders: number[][]; elbows: number[][]; wrists: number[][] } | null
   full: boolean
@@ -315,6 +316,28 @@ export function drawHud(inp: HudInput) {
       ctx.fillStyle = a.speech_prob >= 0.5 ? C.teal : C.muted
       ctx.fillText(`${a.f0_hz ? a.f0_hz.toFixed(0) + ' Hz' : 'unvoiced'}  ${a.rate_syl_s != null ? a.rate_syl_s.toFixed(1) + ' syl/s' : ''}`, px + 78, py + 79)
     } else ctx.fillText('microphone off', px + 10, py + 79)
+  }
+
+  // ---- affect circumplex (above the pulse block)
+  if (inp.affect) {
+    const size = 92, px = w - 250 - 12, py = h - 92 - 12 - size - 30
+    panel(ctx, px, py, 250, size + 22)
+    ctx.font = mono(10); ctx.fillStyle = C.muted; ctx.fillText('EXPRESSED AFFECT  vs calibration', px + 10, py + 12)
+    const cx = px + 10 + size / 2, cy = py + 20 + size / 2, r = size / 2 - 6
+    ctx.strokeStyle = C.line; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke()
+    const v = Math.max(-1, Math.min(1, inp.affect.valence)), a = Math.max(-1, Math.min(1, inp.affect.arousal))
+    const dx = cx + v * r, dy = cy - a * r
+    ctx.fillStyle = v >= 0 ? C.ok : C.warn; ctx.beginPath(); ctx.arc(dx, dy, 5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = C.faint; ctx.font = mono(9)
+    ctx.fillText('+', cx + r - 6, cy - 6); ctx.fillText('-', cx - r + 2, cy - 6); ctx.fillText('active', cx + 4, cy - r + 6); ctx.fillText('calm', cx + 4, cy + r - 4)
+    const lx = px + size + 24
+    ctx.font = mono(11); ctx.fillStyle = C.text
+    ctx.fillText(`valence ${v >= 0 ? '+' : ''}${v.toFixed(2)}`, lx, py + 44)
+    ctx.fillText(`arousal ${a >= 0 ? '+' : ''}${a.toFixed(2)}`, lx, py + 62)
+    ctx.fillStyle = C.muted; ctx.font = mono(9.5)
+    ctx.fillText(v > 0.15 ? 'more positive' : v < -0.15 ? 'more negative' : 'near baseline', lx, py + 82)
+    ctx.fillText('expression, not feeling', lx, py + 96)
   }
 
   // ---- bottom-center ticker: last event

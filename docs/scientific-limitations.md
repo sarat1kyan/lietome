@@ -121,6 +121,21 @@ Lightman gates every window on its SNR and shows nothing below the gate. A pulse
 measurement of the estimate, not of arousal, stress or deception; posture, talking and
 laughing move it as much as anything else.
 
+## Expressed affect, engagement and talk time
+
+Valence and arousal here describe what the face and voice showed, relative to the same
+person's calibration. They are built from Action Units with replicated associations (smiling,
+brow lowering, lid raising) and from voice loudness and pitch. A person can smile through
+distress and look neutral while upset; cultural display rules and individual style differ. Use
+the numbers to notice change within one person, not to label a state.
+
+Engagement counts time with the face and gaze turned to the conversation. Looking away while
+thinking is normal and a camera placed off to the side shifts the reference; the measure is
+relative to calibration for that reason.
+
+Talk time uses mouth movement to decide whose speech it is. Speech overlaps, a listener who
+mouths along, or a face out of view make it approximate.
+
 ## Microexpression candidates
 
 A pattern under 500 ms that peaks within 150 ms of onset is called a candidate. The

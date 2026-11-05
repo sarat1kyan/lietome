@@ -8,6 +8,19 @@
   let erasing = $state<string | null>(null)
   let confirmText = $state('')
   let message = $state('')
+  let selected = $state<string | null>(null)
+  let trends = $state<{ sessions: any[]; measures: string[] } | null>(null)
+  const LABELS: Record<string, string> = { valence: 'valence (mean)', arousal: 'arousal (mean)', engagement: 'oriented to conversation', client_talk_share: 'client talk share', speech_rate: 'syllables per second', negative_patterns_per_min: 'negative patterns per min', blink_rate: 'blinks per min' }
+  async function openTrends(code: string) { selected = code; trends = null; trends = await api.trends(code).catch(() => null) }
+  function spark(rows: any[], key: string): { d: string; pts: { x: number; y: number; v: number }[]; min: number; max: number } {
+    const vals = rows.map((r) => r[key]).filter((v) => v != null) as number[]
+    if (vals.length < 1) return { d: '', pts: [], min: 0, max: 0 }
+    let min = Math.min(...vals), max = Math.max(...vals)
+    if (max - min < 1e-6) { min -= 0.5; max += 0.5 }
+    const W = 220, H = 48
+    const pts = rows.map((r, i) => ({ v: r[key], i })).filter((p) => p.v != null).map((p) => ({ x: rows.length > 1 ? 6 + (p.i / (rows.length - 1)) * (W - 12) : W / 2, y: H - 6 - ((p.v - min) / (max - min)) * (H - 12), v: p.v as number }))
+    return { d: pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '), pts, min, max }
+  }
   async function load() { rows = await api.clients().catch(() => []) }
   load()
   async function create() {
@@ -35,7 +48,7 @@
       <tbody>
         {#each rows as r (r.code)}
           <tr>
-            <td class="mono code">{r.code}</td>
+            <td class="mono code"><button class="link mono" onclick={() => openTrends(r.code)} title="show trends across sessions">{r.code}</button></td>
             <td><input aria-label={`label for ${r.code}`} value={r.label} placeholder="optional" onchange={(e) => saveLabel(r, (e.currentTarget as HTMLInputElement).value)} /></td>
             <td class="mono">{r.sessions}</td>
             <td>{#if r.last_session}<button class="link mono" onclick={() => onopen(r.last_session!)}>{r.last_session.slice(0, 8)}</button>{:else}<span class="muted">none yet</span>{/if}</td>
@@ -56,6 +69,28 @@
       </tbody>
     </table>
   </div>
+  {#if selected}
+    <section class="trends" aria-label={`trends for ${selected}`}>
+      <div class="thead"><span class="eyebrow">trends for {selected}</span><span class="muted">one point per session, oldest left. most useful once there are several sessions recorded in similar conditions.</span><button onclick={() => (selected = null)}>close</button></div>
+      {#if trends && trends.sessions.length}
+        <div class="grid">
+          {#each trends.measures as m (m)}
+            {@const sp = spark(trends.sessions, m)}
+            <figure>
+              <figcaption>{LABELS[m] ?? m}</figcaption>
+              {#if sp.pts.length}
+                <svg viewBox="0 0 220 48" width="100%" height="48" role="img" aria-label={`${LABELS[m] ?? m} across sessions`}>
+                  <path d={sp.d} fill="none" stroke="var(--accent)" stroke-width="1.6" />
+                  {#each sp.pts as p, i (i)}<circle cx={p.x} cy={p.y} r={i === sp.pts.length - 1 ? 3.5 : 2.2} fill={i === sp.pts.length - 1 ? 'var(--accent)' : 'var(--muted)'} />{/each}
+                </svg>
+                <span class="mono vals">last {sp.pts[sp.pts.length - 1].v.toFixed(2)}; range {sp.min.toFixed(2)} to {sp.max.toFixed(2)}</span>
+              {:else}<span class="muted vals">no data</span>{/if}
+            </figure>
+          {/each}
+        </div>
+      {:else if trends}<p class="muted">No analysed sessions yet.</p>{:else}<p class="muted">Loading...</p>{/if}
+    </section>
+  {/if}
   <p class="muted foot">Export gives you everything Lightman holds about a client as a zip. Erase deletes their sessions, notes, norms and entry from this machine; it cannot be undone.</p>
 </section>
 
@@ -79,4 +114,11 @@
   .msg { margin: 0; padding: 8px 12px; background: var(--panel-2); border-left: 2px solid var(--accent); font-size: 13px; }
   .empty { padding: 20px 12px; }
   .foot { font-size: 12px; max-width: 80ch; }
+  .trends { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+  .thead { display: flex; gap: 12px; align-items: baseline; font-size: 12px; flex-wrap: wrap; }
+  .thead button { margin-left: auto; padding: 1px 8px; font-size: 11px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 10px; }
+  figure { margin: 0; display: flex; flex-direction: column; gap: 4px; background: var(--panel-2); padding: 8px 10px; }
+  figcaption { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .vals { font-size: 11px; color: var(--muted); }
 </style>

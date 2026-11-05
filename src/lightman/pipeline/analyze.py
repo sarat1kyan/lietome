@@ -833,6 +833,13 @@ def analyze_video(
     summary["timing_ms"] = timing
     _write_json(analysis_path, _nan_to_none(summary))
     outputs.append(_artifact(analysis_path, "json"))
+    from lightman.practice.summary import write_practice_summary
+
+    try:
+        write_practice_summary(session_dir)
+        outputs.append(_artifact(session_dir / "practice.json", "json"))
+    except (OSError, ValueError, KeyError) as exc:
+        log.warning("practice_summary_failed", error=str(exc))
 
     if cfg.storage.write_report:
         from lightman.report.html import render_report

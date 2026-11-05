@@ -33,3 +33,4 @@ consequences. Supersede by adding a new ADR and linking it.
 | 026 | Upper body and hands, per-machine benchmark, automatic live AU model | accepted |
 | 027 | Local speech-to-text with word timing; opt-in recording and replay | accepted |
 | 028 | Clients, consent records, session notes, export and erasure | accepted |
+| 029 | Expressed affect, engagement, talk time and client trends | accepted |
