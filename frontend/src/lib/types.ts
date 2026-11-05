@@ -106,3 +106,9 @@ export interface CompareResult {
 
 export interface HistoryRow { session_id: string; created_utc: string | null; duration_us: number | null; mode: string; baseline_quality: number | null; centers: Record<string, number>; blink_rate_per_min: number | null; pulse_bpm: number | null; cue_index: number | null; episodes: number | null }
 export interface History { subject_id: string; sessions: HistoryRow[]; shifts: { signal: string; current: number; median_others: number; shift_sd: number | null; n_others: number }[] }
+
+export type ConsentScope = 'video_analysis' | 'audio_analysis' | 'recording' | 'transcription'
+export interface Consent { given_by: 'client' | 'guardian' | 'self'; method: 'verbal' | 'written' | 'electronic'; scope: ConsentScope[]; confirmed_by: string; note: string }
+export interface ClientRow { code: string; label: string; note: string; registered: boolean; created_utc: string | null; sessions: number; last_session: string | null }
+export interface Note { id: string; t_us: number | null; text: string; created_utc: string; updated_utc: string }
+export interface Settings { profile: 'practice' | 'research'; require_consent: boolean; onboarded: boolean; practitioner: string }

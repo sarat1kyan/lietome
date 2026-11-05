@@ -99,6 +99,7 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   exclusion AUs (social smile, brow flash, lip press, brow furrow), per-signal thresholds and
   minimum durations, live voice table + pitch cue, frame readout and live overlays. Replay
   404 -> 268 deviations (167 -> 111/min).
+* ADR-028: clients, consent gate (live and uploads), notes, export and erasure, settings.
 * ADR-027: local speech-to-text (faster-whisper base, word timing, hedges/denials, denial
   moments, answer text), opt-in recording and HUD replay over recorded video.
 * ADR-026: pose model (shoulders, hands, self-touch, shrug; movement cue from hands),

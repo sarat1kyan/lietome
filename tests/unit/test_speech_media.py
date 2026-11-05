@@ -105,6 +105,13 @@ def test_recording_upload_and_serving(tmp_path: Path) -> None:
     (d / "manifest.json").write_text(json.dumps({"subject_ids": ["s"]}))
     (d / "analysis.json").write_text(json.dumps({"mode": "live"}))
     client = TestClient(create_app(tmp_path))
+    no_scope = client.post(
+        f"/api/sessions/{sid}/media", files={"file": ("r.webm", b"x" * 10, "video/webm")}
+    )
+    assert no_scope.status_code == 403  # recording outside the consent scope
+    (d / "consent.json").write_text(
+        json.dumps({"recorded": True, "scope": ["video_analysis", "recording"]})
+    )
     bad = client.post(f"/api/sessions/{sid}/media", files={"file": ("x.txt", b"hi", "text/plain")})
     assert bad.status_code == 415
     ok = client.post(

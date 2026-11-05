@@ -36,6 +36,7 @@ from lightman.live.audio_stream import StreamingAudioAnalyzer
 from lightman.models import ModelRegistry
 from lightman.pipeline.analyze import _nan_to_none
 from lightman.pipeline.audio_stage import VAD_MODEL_ID
+from lightman.practice.consent import ConsentRecord
 from lightman.protocol import Marker
 from lightman.schema import Event
 
@@ -134,6 +135,31 @@ async def live_endpoint(
                 data = json.loads(msg["text"])
                 kind = data.get("type")
                 if kind == "start" and analyzer is None:
+                    consent = None
+                    if data.get("consent") is not None:
+                        try:
+                            consent = ConsentRecord.model_validate(data["consent"])
+                        except ValueError:
+                            consent = None
+                    if cfg.practice.require_consent and (
+                        consent is None or not consent.allows("video_analysis")
+                    ):
+                        await ws.send_text(
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "detail": "consent required: confirm the client agreed to "
+                                    "video analysis before starting",
+                                }
+                            )
+                        )
+                        break
+                    if (
+                        consent is not None
+                        and data.get("audio")
+                        and not consent.allows("audio_analysis")
+                    ):
+                        data["audio"] = False  # the microphone is outside the consent scope
                     run_cfg = cfg
                     if data.get("au"):
                         run_cfg = run_cfg.model_copy(
@@ -180,6 +206,7 @@ async def live_endpoint(
                     analyzer.has_audio = audio is not None
                     analyzer.audio_stream = audio
                     analyzer.pose = pose
+                    analyzer.consent = consent
                     analyzer.norms_root = output_root
                     analyzer.norms = load_norms(output_root, analyzer.subject_id)
                     await ws.send_text(
@@ -401,7 +428,8 @@ async def live_endpoint(
             )
             with contextlib.suppress(Exception):  # client may already be gone
                 await ws.send_text(json.dumps({"type": "session", "session_id": session_dir.name}))
-            if audio is not None and cfg.speech.enabled:
+            transcription_ok = analyzer.consent is None or analyzer.consent.allows("transcription")
+            if audio is not None and cfg.speech.enabled and transcription_ok:
                 pcm, origin = audio.session_pcm()
                 start_transcription(session_dir, pcm, origin, cfg, registry)
         if landmarker is not None:

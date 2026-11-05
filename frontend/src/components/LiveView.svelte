@@ -3,6 +3,8 @@
   import { api, tc } from '../lib/api'
   import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg, type LiveQuestionSummaryMsg } from '../lib/live'
   import CueGauge from './CueGauge.svelte'
+  import ConsentDialog from './ConsentDialog.svelte'
+  import type { Consent } from '../lib/types'
   import { CALIBRATION_SECONDS, PASSAGE, phaseAt } from '../lib/calibration'
   import { DEFAULT_SCRIPT, SCRIPT_TEMPLATES, parseScript, shuffleScript, type ScriptQuestion } from '../lib/protocol'
   import { drawHud, type Flash } from '../lib/hud'
@@ -65,6 +67,8 @@
   let speakingAtAsk: boolean | null = null
   let blind = $state(true)
   let record = $state(false)
+  let askConsent = $state(false)
+  let consent = $state<Consent | null>(null)
   let uploadNote = $state('')
   let subjectScreens = $state(0)
   let lastSubjectSent = 0
@@ -274,12 +278,21 @@
     }
   }
 
+  function requestStart() { askConsent = true }
+  function onConsent(code: string, c: Consent) {
+    askConsent = false
+    consent = c
+    subject = code
+    if (!c.scope.includes('audio_analysis')) useAudio = false
+    if (!c.scope.includes('recording')) record = false
+    start()
+  }
   async function start() {
     if (!videoEl) return
     events = []; sessionId = null; audioLast = null; last = null; baselineInfo = null; calib = null; lastPhaseSpeaking = null; qIndex = -1; asked = []; tally = {}; pulseHold = null; ticker = null; answers = []; watchLog = []
     for (const n of LANES) { hist[n].t = []; hist[n].v = [] }
     session = new LiveSession(videoEl, {
-      au: useAu, audio: useAudio, record, fps: 15, width: 640, jpegQuality: 0.72, subject: subject.trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32) || 'subject_001',
+      au: useAu, audio: useAudio, record, consent: consent ?? undefined, fps: 15, width: 640, jpegQuality: 0.72, subject: subject.trim().replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32) || 'subject_001',
       onmessage,
       onstate: (s, d) => { state = s; detail = d ?? '' },
     })
@@ -289,6 +302,7 @@
   onDestroy(() => session?.stop())
 </script>
 
+{#if askConsent}<ConsentDialog wantAudio={useAudio} wantRecording={record} onconfirm={onConsent} oncancel={() => (askConsent = false)} />{/if}
 <section class="live">
   <div class="controls">
     <span class="eyebrow">live analysis</span>
@@ -302,7 +316,7 @@
     {#if state === 'running' || state === 'connecting'}
       <button class="primary" onclick={stop}>stop and save</button>
     {:else}
-      <button class="primary" onclick={start}>start</button>
+      <button class="primary" onclick={requestStart}>start</button>
     {/if}
     <button onclick={() => (showProtocol = !showProtocol)}>{showProtocol ? 'hide protocol' : 'protocol'}</button>
     <label><input type="checkbox" bind:checked={showOverlay} /> overlays</label>

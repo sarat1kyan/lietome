@@ -15,6 +15,8 @@
   import ComparePanel from './components/ComparePanel.svelte'
   import HistoryCard from './components/HistoryCard.svelte'
   import TranscriptPanel from './components/TranscriptPanel.svelte'
+  import NotesPanel from './components/NotesPanel.svelte'
+  import ClientsView from './components/ClientsView.svelte'
   import SubjectView from './components/SubjectView.svelte'
   const subjectMode = typeof location !== 'undefined' && location.hash === '#subject'
 
@@ -30,7 +32,7 @@
   let playhead = $state(0) // microseconds
   let error = $state<string | null>(null)
   let loading = $state(false)
-  let view = $state<'sessions' | 'live'>('sessions')
+  let view = $state<'sessions' | 'live' | 'clients'>('sessions')
   let compare = $state<{ a: Range | null; b: Range | null } | null>(null)
   function setRange(which: 'a' | 'b', r: Range) { compare = { a: which === 'a' ? r : compare?.a ?? null, b: which === 'b' ? r : which === 'a' ? null : compare?.b ?? null } }
 
@@ -102,6 +104,7 @@
       <span class="eyebrow">behavioral analysis workstation</span>
     </div>
     <nav class="nav">
+      <button class:on={view === 'clients'} onclick={() => (view = 'clients')}>clients</button>
       <button class:on={view === 'sessions'} onclick={() => (view = 'sessions')}>sessions</button>
       <button class:on={view === 'live'} onclick={() => (view = 'live')} disabled={api.isDemo()} title={api.isDemo() ? 'needs lightman serve' : ''}>live</button>
     </nav>
@@ -116,7 +119,9 @@
 
   <SessionRail {sessions} current={current?.session_id ?? null} onselect={open} />
 
-  {#if view === 'live'}
+  {#if view === 'clients'}
+    <ClientsView onopen={async (id) => { view = 'sessions'; await reload(id) }} />
+  {:else if view === 'live'}
     <LiveView ondone={liveDone} />
   {:else}
   <main class="stage">
@@ -129,6 +134,7 @@
       {#if compare}
         <ComparePanel sessionId={current.session_id} a={compare.a} b={compare.b} {protocol} onclear={() => (compare = null)} onpreset={(a, b) => (compare = { a, b })} />
       {/if}
+      <NotesPanel sessionId={current.session_id} {playhead} onseek={seekTo} />
       <TranscriptPanel sessionId={current.session_id} {playhead} onseek={seekTo} />
       <KeyMoments {events} session={current} onpick={pick} />
       <ProtocolTable {protocol} onseek={seekTo} />
@@ -169,7 +175,7 @@
   .top-right { display: flex; gap: 12px; align-items: center; font-size: 12px; }
   .keys { font-size: 10.5px; color: var(--faint); }
   .chip { border: 1px solid var(--accent); color: var(--accent); padding: 1px 7px; border-radius: 10px; font-size: 11px; }
-  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto auto auto auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
+  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto auto auto auto auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
   .empty { padding: 48px; color: var(--muted); }
   .error { margin: 12px; padding: 10px 12px; border: 1px solid var(--warn); color: var(--warn); border-radius: var(--radius); }
   code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; }

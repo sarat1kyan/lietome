@@ -4,6 +4,10 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+### Added (ADR-028)
+- Clients (pseudonymous codes), consent records required before analysis, session notes, client export (zip) and erasure.
+- Settings: practice or research profile, practitioner initials.
+
 ### Added
 - `compose.yaml`: project `lightman`, container `lightman`, labelled volumes `lightman-output` and `lightman-models`; OCI labels on the image; `serve --advertise` for the printed host.
 

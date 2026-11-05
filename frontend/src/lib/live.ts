@@ -37,7 +37,7 @@ export interface LiveErrorMsg { type: 'error'; detail: string }
 export type LiveMsg = LiveFrameMsg | LiveEventsMsg | LiveAudioMsg | LiveSessionMsg | LiveBaselineMsg | LiveBaselineUpdateMsg | LiveErrorMsg | { type: 'ready'; session_id: string } | { type: 'marked'; id: string; t_us: number } | LiveQuestionSummaryMsg | { type: 'subject_screens'; n: number }
 
 export interface LiveOptions {
-  au: boolean; subject?: string; record?: boolean;
+  au: boolean; subject?: string; record?: boolean; consent?: Record<string, unknown>;
   audio: boolean
   fps: number
   width: number
@@ -101,7 +101,7 @@ export class LiveSession {
     this.ws = new WebSocket(`${proto}://${location.host}${base}/api/live`)
     this.ws.binaryType = 'arraybuffer'
     this.ws.onopen = () => {
-      this.ws!.send(JSON.stringify({ type: 'start', au: this.opts.au, audio: this.opts.audio, source: 'browser camera', subject: this.opts.subject ?? 'subject_001' }))
+      this.ws!.send(JSON.stringify({ type: 'start', au: this.opts.au, audio: this.opts.audio, source: 'browser camera', subject: this.opts.subject ?? 'subject_001', consent: this.opts.consent }))
     }
     this.ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data) as LiveMsg
