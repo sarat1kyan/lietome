@@ -138,5 +138,7 @@ def test_share_report_renders_a_session(tmp_path: Path) -> None:
     html = render_share_report(d)
     assert "anna" in html and "&lt;b&gt;escaped&lt;/b&gt;" in html
     assert "fear 1" in html and "negative" not in html.split("Expression patterns")[1][:80]
-    assert "not probabilities" in html
+    assert "not a diagnosis" in html.replace("nothing here is a diagnosis", "not a diagnosis")
+    assert "Possibility of deception" not in html  # practice profile hides the research layer
+    assert "Possibility of deception" in render_share_report(d, research=True)
     assert [e["event_id"] for e in key_moments(ev)] == ["ev_00001"]

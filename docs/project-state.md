@@ -99,6 +99,8 @@ us time base , Apache-2.0 , robust leading-window baseline , PyAV, no shell FFmp
   exclusion AUs (social smile, brow flash, lip press, brow furrow), per-signal thresholds and
   minimum durations, live voice table + pitch cue, frame readout and live overlays. Replay
   404 -> 268 deviations (167 -> 111/min).
+* ADR-030: interface rebuilt around practice: home, tabs, profiles (research layer hidden in
+  practice), onboarding, settings with system status, upload with consent.
 * ADR-029: expressed affect (valence/arousal), engagement, talk time by mouth movement,
   practice summary per session, per-client trends with sparklines, live affect readout.
 * ADR-028: clients, consent gate (live and uploads), notes, export and erasure, settings.

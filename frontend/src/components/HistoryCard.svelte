@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { research } from '../lib/settings.svelte'
   import { api, tc } from '../lib/api'
   import type { History } from '../lib/types'
   let { sessionId }: { sessionId: string } = $props()
@@ -11,7 +12,7 @@
   const when = (s: string | null) => (s ? s.slice(0, 16).replace('T', ' ') : '')
 </script>
 
-{#if val && val.n_items}
+{#if research() && val && val.n_items}
 <section class="hist">
   <div class="hdr"><span class="eyebrow">validation for {val.subject_id}</span><span class="muted">{val.n_items} instructed answers over {val.sessions.length} sessions. how well each score separated this person's instructed lies from truths.</span></div>
   <table class="mono"><tbody>

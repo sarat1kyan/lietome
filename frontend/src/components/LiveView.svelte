@@ -4,6 +4,7 @@
   import { LiveSession, listCameras, type LiveBaselineMsg, type LiveFrameMsg, type LiveMsg, type LiveQuestionSummaryMsg } from '../lib/live'
   import CueGauge from './CueGauge.svelte'
   import ConsentDialog from './ConsentDialog.svelte'
+  import { research } from '../lib/settings.svelte'
   import type { Consent } from '../lib/types'
   import { CALIBRATION_SECONDS, PASSAGE, phaseAt } from '../lib/calibration'
   import { DEFAULT_SCRIPT, SCRIPT_TEMPLATES, parseScript, shuffleScript, type ScriptQuestion } from '../lib/protocol'
@@ -49,7 +50,7 @@
   let showProtocol = $state(false)
   let script = $state(DEFAULT_SCRIPT)
   let subject = $state('subject_001')
-  let template = $state(SCRIPT_TEMPLATES[0].name)
+  let template = $state(SCRIPT_TEMPLATES.find((t) => !t.name.startsWith('validation'))?.name ?? SCRIPT_TEMPLATES[0].name)
   function applyTemplate() { const t = SCRIPT_TEMPLATES.find((x) => x.name === template); if (t) script = t.text }
   const questions = $derived(parseScript(script))
   let qIndex = $state(-1)
@@ -176,7 +177,7 @@
       subjectScreens = m.n
     } else if (m.type === 'question_summary') {
       answers = [...answers.filter((a) => a.id !== m.id), m]
-      ticker = `Q${m.id.replace(/^q/, '')} cue index ${m.index.value == null ? 'n/a' : Math.round(m.index.value)} (${m.index.band})`
+      if (research()) ticker = `Q${m.id.replace(/^q/, '')} cue index ${m.index.value == null ? 'n/a' : Math.round(m.index.value)} (${m.index.band})`
     }
   }
 
@@ -211,7 +212,7 @@
       windowUs: 30e6,
       question: currentQ ? { id: currentQ.q.id, text: currentQ.q.text, category: currentQ.q.category, sinceUs: currentQ.t_us, devs: currentQ.devs, latencyMs: currentQ.latency_ms } : null,
       phase: calib ? calib.name : null,
-      lastIndex: lastAnswer ? { id: lastAnswer.id, value: lastAnswer.index.value, band: lastAnswer.index.band } : null,
+      lastIndex: research() && lastAnswer ? { id: lastAnswer.id, value: lastAnswer.index.value, band: lastAnswer.index.band } : null,
       ticker: m.baseline_ready ? ticker : null,
       hints: m.hints ?? [],
       serverPatterns: m.patterns ?? null,
@@ -352,7 +353,7 @@
             <div class="tiny muted subj-link">subject screen: open <span class="mono">{location.origin}{location.pathname}#subject</span> on a second device or window{subjectScreens ? ` (${subjectScreens} connected)` : ''}{location.hostname !== 'localhost' && location.hostname !== '127.0.0.1' ? '; on another device use the token link plus #subject' : ''}</div>
             {#if validation}<label class="tiny"><input type="checkbox" bind:checked={blind} disabled={state === 'running'} /> blind: the app assigns truth or lie per relevant question, shown only on the subject screen</label>{/if}
             <div class="tpl">
-              <select bind:value={template} onchange={applyTemplate}>{#each SCRIPT_TEMPLATES as t (t.name)}<option value={t.name}>{t.name}</option>{/each}</select>
+              <select bind:value={template} onchange={applyTemplate}>{#each SCRIPT_TEMPLATES.filter((t) => research() || !t.name.startsWith('validation') && !t.name.startsWith('mock')) as t (t.name)}<option value={t.name}>{t.name}</option>{/each}</select>
               <button onclick={() => (script = shuffleScript(script))} title="shuffle question order, first line stays">shuffle</button>
             </div>
             <textarea bind:value={script} rows="7" spellcheck="false"></textarea>
@@ -372,7 +373,7 @@
               <button onclick={endAnswer} disabled={!currentQ}>end answer</button>
             </div>
             <div class="note-row"><input placeholder="note at current time" bind:value={noteText} onkeydown={(e) => e.key === 'Enter' && addNote()} /><button onclick={addNote}>add</button></div>
-            {#if lastAnswer}
+            {#if research() && lastAnswer}
               <div class="answer">
                 <div class="tiny mono muted">last answer Q{lastAnswer.id.replace(/^q/, '')} ({lastAnswer.category}){lastAnswer.response_latency_ms != null ? `, answered after ${lastAnswer.response_latency_ms.toFixed(0)} ms` : ''}: {lastAnswer.deviations} deviations, {lastAnswer.episodes} episodes{lastAnswer.expression_patterns.length ? `, ${lastAnswer.expression_patterns.slice(0, 3).join(', ')}` : ''}</div>
                 {#if lastAnswer.control_index?.value != null}

@@ -44,6 +44,23 @@ export const api = {
     if (demo()) return { n_items: 0 }
     return getJson(`./api/subjects/${encodeURIComponent(subject)}/validation`)
   },
+  async system(): Promise<any> {
+    if (demo()) return null
+    return getJson('./api/system')
+  },
+  async analyze(file: File, client: string, consent: unknown, au = true): Promise<string> {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('client', client)
+    fd.append('consent', JSON.stringify(consent))
+    fd.append('au', String(au))
+    const r = await fetch('./api/analyze', { method: 'POST', body: fd })
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail ?? `upload failed: ${r.status}`)
+    return (await r.json()).job_id
+  },
+  async job(id: string): Promise<{ state: string; session_id?: string; error?: string }> {
+    return getJson(`./api/jobs/${id}`)
+  },
   async settings(): Promise<Settings> {
     if (demo()) return { profile: 'practice', require_consent: true, onboarded: true, practitioner: '' }
     return getJson('./api/settings')

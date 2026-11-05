@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { LmEvent, SessionDetail } from '../lib/types'
   import CueGauge from './CueGauge.svelte'
+  import { research } from '../lib/settings.svelte'
   let copied = $state(false)
   async function copySummary() {
     const a = detail.analysis ?? {}
@@ -9,14 +10,16 @@
       ...narrative,
       '',
       'Event counts: ' + Object.entries(a.event_counts ?? {}).map(([k, v]) => `${k} ${v}`).join(', '),
-      cues?.index?.text ?? '',
+      showCues ? cues?.index?.text ?? '' : '',
       '',
       'Measurements of movement and voice against this person\'s own baseline. Not a lie detector.',
     ]
     try { await navigator.clipboard.writeText(lines.filter((l) => l != null).join('\n')); copied = true; setTimeout(() => (copied = false), 1500) } catch { copied = false }
   }
-  let { detail, events }: { detail: SessionDetail; events: LmEvent[] } = $props()
-  const narrative = $derived((detail.analysis?.narrative ?? []) as string[])
+  let { detail, events, researchOnly = false }: { detail: SessionDetail; events: LmEvent[]; researchOnly?: boolean } = $props()
+  const DECEPTION = /^(Possibility of deception|Deception-research cues|Q\d+: \d+ of \d+ evaluable|Relevant questions averaged)/
+  const narrative = $derived(((detail.analysis?.narrative ?? []) as string[]).filter((l) => research() || !DECEPTION.test(l)))
+  const showCues = $derived(research())
   const contributors = $derived.by(() => {
     const c = new Map<string, number>()
     for (const e of events) if (e.event_type === 'baseline_deviation') { const f = e.contributions[0]?.feature; if (f) c.set(f, (c.get(f) ?? 0) + 1) }
@@ -52,6 +55,31 @@
   })
 </script>
 
+{#if researchOnly}
+<section class="card research-card">
+  <div class="col">
+    <div class="eyebrow">deception-research cues for the whole session (research profile)</div>
+    {#if cues?.index}<div class="gauge-wrap"><CueGauge index={cues.index} /></div>{/if}
+    {#if cues}
+      <div class="mono cue-sum">{cues.summary}</div>
+      <ul class="cues">
+        {#each cues.cues as c (c.key)}
+          <li class:on={c.present}><span class="dot"></span><span>{c.name}</span><span class="mono muted">{c.value == null ? 'n/a' : c.value + ' ' + c.unit}</span><span class="mono muted" title={c.source}>d={c.effect_size}</span></li>
+        {/each}
+      </ul>
+      <div class="muted small-note">{cues.caveat}</div>
+    {:else}<div class="muted">no cue profile in this session</div>{/if}
+  </div>
+  <div class="col small">
+    <div class="eyebrow">most frequent deviating signals</div>
+    <div class="bars">
+      {#each contributors as c (c.f)}
+        <div class="row"><span class="mono lbl">{c.f}</span><span class="bar"><i class:audio={c.audio} style="width:{c.w}%"></i></span><span class="mono n">{c.n}</span></div>
+      {:else}<div class="muted">none</div>{/each}
+    </div>
+  </div>
+</section>
+{:else}
 <section class="card">
   <div class="stats">
     {#each stats as s (s.k)}<div class="stat {s.c}"><span class="mono v">{s.v}</span><span class="k">{s.k}</span></div>{/each}
@@ -83,10 +111,10 @@
     {#if detail.analysis?.norms}
       <div class="muted small-note">personal norms from {detail.analysis.norms.sessions_used} earlier sessions: {detail.analysis.norms.widened.length} signals widened{detail.analysis.norms.drift.length ? `; calibration drift in ${detail.analysis.norms.drift.slice(0, 3).map((d: any) => d.signal.replace(/^(blendshape|au)\./, '')).join(', ')}` : ''}</div>
     {/if}
-    {#if cues?.index}
+    {#if showCues && !researchOnly && cues?.index}
       <div class="gauge-wrap"><CueGauge index={cues.index} /></div>
     {/if}
-    {#if cues}
+    {#if showCues && !researchOnly && cues}
       <div class="eyebrow cues-hdr">deception-research cues (checklist, not a probability)</div>
       <div class="mono cue-sum">{cues.summary}</div>
       <ul class="cues">
@@ -98,6 +126,7 @@
     {/if}
   </div>
 </section>
+{/if}
 
 <style>
   .card { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 20px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
@@ -130,4 +159,5 @@
   .cues li.on { color: var(--text); }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
   .cues li.on .dot { background: var(--accent); }
+  .research-card { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
 </style>
