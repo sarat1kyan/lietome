@@ -18,13 +18,24 @@ from lightman.core.logging import configure_logging
 
 app = typer.Typer(
     name="lightman",
-    help="Lightman: observable-behavior analysis against subject-specific baselines. "
-    "Not a lie detector.",
+    help="Lightman: local behavioral analysis for people who work with people. Expressed "
+    "affect, engagement, talk time and moments to revisit, against each person's own baseline. "
+    "Not a lie detector, not a diagnosis.",
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
 models_app = typer.Typer(help="Manage model assets (manifest-pinned, SHA-256 verified).")
 app.add_typer(models_app, name="models")
+
+
+def default_sessions_dir() -> Path:
+    """./output when working in a checkout that has one, else the per-user data folder."""
+    local = Path("output")
+    if local.is_dir():
+        return local
+    from platformdirs import user_data_dir
+
+    return Path(user_data_dir("lightman", appauthor=False)) / "sessions"
 
 
 def _fail(exc: Exception) -> None:
@@ -64,9 +75,12 @@ def probe(
 @app.command()
 def analyze(
     media: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
-    out: Annotated[Path, typer.Option("--out", "-o", help="Output root directory")] = Path(
-        "output"
-    ),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out", "-o", help="Session folder (default: ./output if present, else user data)"
+        ),
+    ] = None,
     config: Annotated[
         Path | None, typer.Option("--config", "-c", exists=True, dir_okay=False)
     ] = None,
@@ -94,7 +108,7 @@ def analyze(
             updates["storage"] = cfg.storage.model_copy(update=storage_updates)
         if updates:
             cfg = cfg.model_copy(update=updates)
-        result = analyze_video(media, out, cfg, subject_id=subject)
+        result = analyze_video(media, out or default_sessions_dir(), cfg, subject_id=subject)
     except LightmanError as exc:
         _fail(exc)
         return
@@ -132,8 +146,10 @@ def live(
     ] = False,
     subject: Annotated[str, typer.Option(help="Anonymous subject id")] = "subject_001",
 ) -> None:
-    """Live analysis from a webcam. Frames are processed in memory; only features and events
-    are written. Baseline = first `baseline.window_s` seconds. Press q in the preview to stop."""
+    """Live analysis in a preview window, without the browser.
+
+    Frames are processed in memory; only features and events are written. Press q to stop.
+    """
     import threading
 
     from lightman.live.runner import console_sink, run_live
@@ -199,9 +215,12 @@ def live(
 
 @app.command()
 def serve(
-    out: Annotated[Path, typer.Option("--out", "-o", help="Session root to serve")] = Path(
-        "output"
-    ),
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out", "-o", help="Session folder (default: ./output if present, else user data)"
+        ),
+    ] = None,
     host: Annotated[
         str, typer.Option(help="Bind address; keep 127.0.0.1 unless you know why")
     ] = "127.0.0.1",
@@ -228,8 +247,10 @@ def serve(
         ),
     ] = 0,
 ) -> None:
-    """Serve the web UI and API. Local by default; --host 0.0.0.0 enables LAN access with
-    a required token and self-signed TLS (browsers need HTTPS for camera and microphone)."""
+    """Start the web interface (http://127.0.0.1:8710).
+
+    --host 0.0.0.0 allows other devices on the network, with an access token and HTTPS.
+    """
     import uvicorn
 
     from lightman.api.app import create_app
@@ -265,7 +286,10 @@ def serve(
             "sessions. Stop the server when done.",
             fg=typer.colors.YELLOW,
         )
-    app_obj = create_app(out, cfg, token=tok)
+    root = out or default_sessions_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    typer.echo(f"Sessions folder: {root.resolve()}")
+    app_obj = create_app(root, cfg, token=tok)
     servers = [
         uvicorn.Server(
             uvicorn.Config(
@@ -293,6 +317,52 @@ def serve(
         await asyncio.gather(*(s.serve() for s in servers))
 
     asyncio.run(_run_all())
+
+
+@app.command()
+def setup(
+    minimal: Annotated[
+        bool, typer.Option("--minimal", help="Only what live sessions need (about 60 MB)")
+    ] = False,
+    skip_bench: Annotated[
+        bool, typer.Option("--skip-bench", help="Do not time the models")
+    ] = False,
+) -> None:
+    """Download and verify the models, time them on this machine, and print how to start."""
+    import importlib.util
+
+    from lightman.models import ModelRegistry
+
+    reg = ModelRegistry()
+    wanted = [
+        "mediapipe/face_landmarker",
+        "opengraphau/resnet18_s2",
+        "silero/vad_v6",
+        "mediapipe/pose_landmarker_lite",
+    ]
+    if not minimal:
+        wanted.append("opengraphau/resnet50_s2")
+    for mid in wanted:
+        state = "ready" if reg.is_cached(mid) else "downloading"
+        typer.echo(f"{mid:34s} {state}")
+        try:
+            reg.ensure(mid)
+        except LightmanError as exc:
+            typer.secho(f"  failed: {exc}", fg=typer.colors.RED)
+    if importlib.util.find_spec("faster_whisper") is not None:
+        state = "ready" if reg.is_cached("whisper/base/model") else "downloading"
+        typer.echo(f"{'whisper (speech-to-text)':34s} {state}")
+        try:
+            reg.ensure_group("whisper__base")
+        except LightmanError as exc:
+            typer.secho(f"  failed: {exc}", fg=typer.colors.RED)
+    else:
+        typer.echo(f"{'speech-to-text':34s} not installed (optional: the asr extra)")
+    if not skip_bench:
+        typer.echo("timing the models on this machine...")
+        bench(image=None, frames=20, cpu=False)
+    typer.secho("\nReady. Start Lightman with:  lightman serve", fg=typer.colors.GREEN)
+    typer.echo("Then open http://127.0.0.1:8710 in your browser.")
 
 
 @app.command()

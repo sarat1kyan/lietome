@@ -1,0 +1,20 @@
+name: Feature request
+description: A measure, view or workflow you need
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you are trying to do
+      description: The situation and who it is for (practice, coaching, research).
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: For new measures, the studies or data that support them.

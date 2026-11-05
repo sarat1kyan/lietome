@@ -1,12 +1,14 @@
 # Project state
 
-Last updated: 2026-09-05 (session 4: enhancements pass, network access, protocol mode, expressions and cues). Facts only.
+Last updated: 2026-11-05 (0.2.0: practice layer, new interface, installers and docs). Facts only.
 
 ## Phase
 
-Phase 0 (research/architecture), 1 (media ingestion), 2 (single-face prerecorded analysis)
-complete; Phase 3 started (AU backend); Phase 5 first slice done (audio). Version `0.1.0a0`. Model assets
-published as release `models-v1` on the repository; no package release.
+Phases 0 to 2 complete; AU, audio, body, speech and live analysis in place; practice layer
+(consent, clients, notes, affect, engagement, talk time, trends) and practice interface done
+(ADR-028 to 030). Version `0.2.0`. Model assets published as release `models-v1`. Installers
+and the release workflow exist (ADR-031); the first package release is tag `v0.2.0`, cut by
+the maintainer.
 
 ## Working
 

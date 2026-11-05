@@ -1,36 +1,51 @@
 # Contributing
 
-Thanks for considering a contribution. Lightman is early; the most valuable contributions
-right now are careful ones: measurement code with tests, honest documentation, and
-benchmarks.
+Lightman measures real people, often in vulnerable moments. Contributions are welcome when
+they keep it honest, private and careful: measurement code with tests, clearer documentation,
+benchmarks on more machines, and reports from people who use it in practice.
 
 ## Ground rules
 
-1. **No fake outputs.** Never return a made-up score, confidence, or placeholder model result. If a
-   capability is incomplete, say so in code and docs.
-2. **Respect the epistemic ladder.** Observation -> interpretation -> inference -> speculation.
-   Code that emits an event must choose its level honestly (`lightman.schema.EvidenceLevel`).
-   Nothing in this repository may label a person as lying/truthful.
-3. **Licenses first.** Before adding a dependency, model, or dataset, record its license in
-   `docs/licensing.md`. Research-only / non-commercial weights do not go in the core package.
-4. **Privacy by default.** Do not log biometric payloads, transcripts, or subject names. Do not
-   add telemetry. Do not commit recordings of real people.
-5. **Tests with every change.** Fast tests must not require model downloads; mark model tests
+1. **No fake outputs.** Never return a made-up score, confidence, or placeholder model result.
+   If a capability is incomplete, say so in code and docs.
+2. **Respect the evidence ladder.** Observation, interpretation, inference, speculation. Code
+   that emits an event chooses its level honestly (`lightman.schema.EvidenceLevel`). Nothing in
+   this repository labels a person as lying, truthful, or as having a condition.
+3. **Practice first.** Deception-research material stays behind the research profile. New
+   measures shown in the practice profile need a plain-language meaning and caveat.
+4. **Consent is not optional.** New ways of capturing data go through the consent scope
+   (`lightman.practice.consent`).
+5. **Licenses first.** Before adding a dependency, model, or dataset, record its license in
+   `docs/licensing.md`. Research-only or non-commercial weights do not go in the core package.
+6. **Privacy by default.** Do not log biometric payloads, transcripts, or names. No telemetry.
+   Do not commit recordings of real people.
+7. **Tests with every change.** Fast tests must not need model downloads; mark model tests
    with `@pytest.mark.model`.
 
-## Development setup
+## Setup
 
 ```bash
-uv sync                                 # creates .venv with dev tools
+uv sync --extra asr
 uv run pre-commit install
-uv run lightman models download mediapipe/face_landmarker
-uv run pytest -q                        # full suite (model tests skip if not cached)
-uv run ruff check src tests && uv run mypy
+(cd frontend && npm ci && npm run build)
+uv run lightman setup
 ```
+
+## Checks
+
+```bash
+uv run pytest -q
+uv run ruff check src tests && uv run ruff format --check src tests
+uv run mypy
+(cd frontend && npm run check)
+```
+
+CI runs the same on Linux, macOS and Windows with Python 3.12 and 3.13, plus model tests,
+the Docker build, `pip-audit` and secret scanning.
 
 ## Pull requests
 
-* Keep commits focused; describe *why* in the message.
-* Significant design changes need an ADR in `docs/adr/` (short; see existing ones).
-* Update `docs/project-state.md` when you change what works, what is known-broken, or
-  benchmark numbers.
+* One topic per pull request; the message says why.
+* Design changes need a short ADR in `docs/adr/`.
+* Update `docs/project-state.md` and `CHANGELOG.md` when behaviour or numbers change.
+* Plain ASCII in code, docs and commit messages.

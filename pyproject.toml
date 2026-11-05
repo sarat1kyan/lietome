@@ -1,16 +1,18 @@
 [project]
 name = "lightman"
-version = "0.1.0a0"
-description = "Open-source multimodal behavioral-analysis platform: observable facial, vocal, temporal and linguistic signals compared against subject-specific baselines. Not a lie detector."
+version = "0.2.0"
+description = "Local-first behavioral analysis for people who work with people: expressed affect, engagement, talk time and moments to revisit, measured against each person's own baseline. Not a lie detector, not a diagnosis."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
-authors = [{ name = "Lightman contributors" }]
-keywords = ["behavioral-analysis", "facial-action-units", "computer-vision", "affective-computing", "baseline-deviation"]
+authors = [{ name = "Mher Saratikyan" }]
+keywords = ["behavioral-analysis", "psychology", "counselling", "facial-action-units", "affective-computing", "speech", "computer-vision"]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
+  "Intended Audience :: Healthcare Industry",
+  "Environment :: Web Environment",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -59,15 +61,20 @@ dev = [
 [project.scripts]
 lightman = "lightman.cli:app"
 
-[project.urls]
-Documentation = "docs/"
-
 [build-system]
 requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lightman"]
+# the built web UI is gitignored (built by CI and the release workflow) but ships in the wheel
+artifacts = ["src/lightman/api/static/**"]
+
+[project.urls]
+Homepage = "https://github.com/sarat1kyan/lietome"
+Documentation = "https://github.com/sarat1kyan/lietome/tree/main/docs"
+Issues = "https://github.com/sarat1kyan/lietome/issues"
+Changelog = "https://github.com/sarat1kyan/lietome/blob/main/CHANGELOG.md"
 
 # ---------------------------------------------------------------- ruff
 [tool.ruff]
