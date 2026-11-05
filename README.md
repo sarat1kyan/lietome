@@ -1,169 +1,134 @@
 # Lightman
 
-**Lightman is an open-source, local-first platform for analyzing observable human behavior
-over time** - facial motion, head pose, blinks, and (in upcoming phases) voice and speech
-timing - and comparing it against a **subject-specific baseline**.
+**Behavioral insight for people who work with people.**
 
-It is a research and analysis instrument. **It is not a lie detector**, and it will not tell
-you that someone is lying. It tells you *what measurably changed, when, by how much relative
-to that person's own baseline, and how much to trust the measurement*.
+Lightman watches a conversation through the camera and microphone and measures how a person's
+face, voice and posture move, against that same person's baseline: expressed affect,
+engagement, who is talking, expressions, gestures, pauses, and the moments worth replaying,
+side by side with the transcript and your own notes.
 
-> Behavioral deviation 2.6 SD , `browDownLeft` up (AU4 proxy) , 420 ms , face quality 0.97 , baseline quality 0.71
-> - *this event alone establishes nothing about truthfulness.*
+It runs entirely on your computer. Nothing is uploaded. It does not diagnose, it does not read
+minds, and it is not a lie detector.
 
-## Philosophy
-
-**Measure observable behavior first. Interpret cautiously second.**
-
-Every result carries an explicit evidence level and is traceable to the frames, signals, model
-version, and baseline that produced it:
-
-| Level | Example | Emitted today |
-|---|---|---|
-| **Observation** | `blendshape.browDownLeft` reached 0.81 (+3.4 SD vs baseline median 0.12) | yes |
-| **Interpretation** | blink; co-occurring deviation across 3 signals | yes |
-| **Inference** | possible stress-related change | no (future, with calibration data) |
-| **Speculation** | deception | never presented as fact |
-
-## What works now (v0.1.0a0)
-
-```bash
-uv sync
-uv run lightman models download mediapipe/face_landmarker   # 3.7 MB, SHA-256 verified
-uv run lightman models download opengraphau/resnet50_s2     # 143 MB AU model (or resnet18_s2, 48 MB)
-uv run lightman models download silero/vad_v6               # 2.3 MB voice activity model
-uv sync --extra asr                                          # optional: local speech-to-text (Whisper base, 145 MB on first use)
-uv run lightman bench                                        # time the models on this machine; picks the live AU model
-uv run lightman analyze interview.mp4 -o output/
+```
+Session C-014, 24 min        valence +0.18   arousal -0.05   oriented 86%   client talk 61%
+  12:41  brief expression pattern: sadness (AU1+AU4+AU15)        note: "talked about her father"
+  12:44  gaze away (down): 3.1 s
+  13:02  speech pause: 2.4 s
 ```
 
-Produces `output/<session_id>/`:
+## Who it is for
 
-| File | Content |
+* **Psychologists, counsellors and therapists**: review a session, see how expression and
+  engagement moved, track a client across sessions, export or erase their data on request.
+* **Coaches and trainers**: give feedback on presence, pace, pauses and talk balance.
+* **Researchers**: the research profile adds deception-research cues, validation games and raw
+  signal views, with effect sizes and caveats next to every number.
+* **Anyone practising**: interviews, presentations and difficult conversations, reviewed with
+  your own consent.
+
+## What it does
+
+| | |
 |---|---|
-| `metadata.json` | container/stream info, file hash (no absolute paths) |
-| `features.parquet` | per-frame table: us timestamps, head pose, eye aspect ratio, 52 blendshape coefficients, 41 Action Unit probabilities, quality |
-| `audio_features.parquet`, `speech_segments.json`, `audio_baseline.json` | 20 ms voice frames (F0, energy, voicing, speech probability), speech segments with pause/rate/pitch statistics, speaker baseline |
-| `baseline.json` | robust per-signal baseline (median, 1.4826,MAD, sample counts, reliability) |
-| `events.json` | blinks, per-signal baseline deviations, episodes, FACS expression patterns, head nods/shakes, gaze-away episodes, unfamiliar AU pairings, pulse-estimate changes, voice events - each with contributors, confidence, quality, provenance |
-| `pulse.json` | camera pulse estimate per second (rPPG, POS) with SNR; gated below 3 dB |
-| `analysis.json` | summary statistics and stage timings |
-| `report.html` | self-contained inspection report: timelines in SD units, ranked events, thumbnails |
-| `manifest.json` | versions, model hashes, environment, config snapshot, output hashes |
+| **Live sessions** | Camera and microphone in the browser. A 40 second calibration (sit, read, talk), then live overlays: face mesh, Action Units with names, expression pattern meter, gaze, head pose, shoulders and hands, voice, pulse estimate, expressed affect. A second screen for the client shows only instructions and questions. |
+| **Recordings** | Drop a video file; it is analysed on this machine with the same models. |
+| **Session overview** | Expressed affect over time (valence and arousal), engagement, talk time split between client and others, speech rate, pauses, positive and negative expression patterns, a plain-language summary and the key moments with thumbnails. |
+| **Review** | Video (if recorded) with the measurements drawn on it, timeline, frame-by-frame readout, event list, compare any two stretches of the session. |
+| **Conversation** | Local speech-to-text with word timing; hedges and denials marked; denials that came with a face or body change listed as moments to replay; answers per question. |
+| **Clients** | Pseudonymous codes, sessions grouped per client, trends across sessions, export everything as a zip, erase everything with one confirmed action. |
+| **Consent built in** | Before every session you record who agreed and to what (analysis, voice, transcript, recording). Without it nothing starts. |
+| **Reports** | A single self-contained HTML report per session: overview, notes, key moments, consent record. |
 
-Measured on Apple M5 Pro (CPU only): **3.5 ms/frame** landmarks + blendshapes, **67-88 ms/frame**
-AU detector (resnet50) or **17-20 ms** (resnet18). A 20 s 640x480 clip takes 3.4 s without AUs,
-58 s with the default AU model. See `docs/benchmarks.md`.
+Everything Lightman reports is measured against the person's own calibration and labelled
+with what it does and does not mean.
 
-### Docker
+## Install
 
-```bash
-docker compose up --build        # project "lightman": image lightman:latest, container lightman
-docker compose logs lightman     # the access URL with its token
-docker compose down              # stop; add -v to also delete the lightman-output and lightman-models volumes
-```
-
-Everything Docker creates for Lightman is named `lightman*` and carries the label
-`dev.lightman.project=lightman`:
+**macOS and Linux**
 
 ```bash
-docker images --filter label=dev.lightman.project=lightman
-docker volume ls --filter label=dev.lightman.project=lightman
+curl -LsSf https://raw.githubusercontent.com/sarat1kyan/lietome/main/scripts/install.sh | sh
 ```
 
-### Web UI
+**Windows** (PowerShell)
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/sarat1kyan/lietome/main/scripts/install.ps1 | iex"
+```
+
+The installer sets up an isolated Python 3.12 environment with
+[uv](https://docs.astral.sh/uv/), installs the latest release, downloads and verifies the
+models (about 350 MB with speech-to-text), and times them on your machine. Then:
 
 ```bash
-cd frontend && npm install && npm run build && cd ..   # once; CI and Docker do this too
-uv run lightman serve -o output/                       # http://127.0.0.1:8710
-uv run lightman serve -o output/ --host 0.0.0.0        # LAN: prints https://<ip>:8710/?token=... (self-signed, accept once)
-                                                       # same machine: http://localhost:8711/ (no token, no warning)
+lightman serve
 ```
 
-Session rail, video stage (attach the original file for local playback; it never leaves your
-browser), timeline lanes in robust-SD units with an event strip, and an evidence panel with
-contributors and confidence. `npm run build:demo` produces a single HTML file with one session
-inlined for sharing a look without a server.
+and open **http://127.0.0.1:8710**. Sessions are stored in your user data folder; the path is
+printed when the server starts.
 
-### Expression patterns and research cues
+Other ways to install (from source, Docker, other devices on your network) and
+troubleshooting: [docs/installation.md](docs/installation.md).
 
-FACS prototype patterns (happiness 6+12, surprise 1+2+5+26, fear, anger, sadness, disgust,
-contempt) appear as violet events with their AU list and duration; under 500 ms they are tagged
-"brief". They describe the face, not the feeling. A checklist of deception-research cues
-(pitch, pressed lips, movement, response latency, blink change) is shown per session and per
-question with the published effect sizes next to each; it is a description, never a
-probability or verdict (ADR-017).
+## Your first session
 
-### Interview protocol (live tab, "protocol")
+1. Open Lightman, finish the three onboarding screens (your initials and the profile).
+2. **Start a live session**, choose or create a client code, and record their consent.
+3. Sit the person facing the camera in even light, about an arm's length away.
+4. Follow the 40 second calibration on screen: sit quietly, read the passage aloud, talk freely.
+5. Talk as you normally would. Press **stop and save** at the end and open the session.
 
-Write questions one per line (`C:` control, `R:` relevant, `N:` neutral, optional `[truth]`
-or `[lie]` expected class), press **ask next** (or `n`) as you read each aloud, **end answer**
-when the subject stops. The session gets a per-question table: response latency, speech time,
-deviations per minute, strongest signals, blink rate, pitch shift, plus a control-vs-relevant
-comparison with a permutation p-value and, when expected classes are given, an AUROC. All of
-it is descriptive; no question is ever labelled a lie (ADR-016).
+The full walkthrough, including how to read the results and how to explain Lightman to a
+client: [docs/user-guide.md](docs/user-guide.md).
 
-### Live webcam
+## Privacy and ethics
 
-In the web UI, open the **live** tab: the browser asks for camera/microphone permission,
-frames and audio stream to the local server over a WebSocket, landmarks and the face box are
-drawn on the self-view, voice pitch/loudness and face signals get baseline-deviation events,
-and stopping saves a normal session. From the terminal (video only):
+* Everything runs locally. No telemetry, no cloud processing, no account.
+* Frames are analysed in memory; video is kept only when the consent includes recording.
+* Every session stores its consent record. Clients are codes, not names.
+* Export or erase everything about a client from the Clients page.
+* Lightman must not be used for hiring decisions, interrogation, security screening, covert
+  recording, or diagnosis. Read [docs/ethics.md](docs/ethics.md) before using it with others.
 
-```bash
-uv run lightman live                    # camera 0, preview window, landmarks + blendshapes
-uv run lightman live --au               # adds the fast AU model (resnet18), still 30 fps on M5 Pro CPU
-uv run lightman live --source clip.mp4  # replay a file at real-time pace (no camera needed)
-```
+## How it works
 
-The live tab runs a guided 40 s calibration (12 s quiet, 14 s reading a fixed neutral passage,
-14 s free talk, see `docs/calibration.md`) so silent and speaking states each get a baseline. Deviation and blink events print as they
-happen and a normal session directory is written when you press q. Frames are never saved.
+Video frames go through MediaPipe face landmarks and blendshapes, an Action Unit model
+(OpenGraphAU), a pose model for shoulders and hands; audio through voice activity detection,
+pitch, loudness and speech rate, and a local Whisper model for the transcript. Every signal is
+compared with a robust baseline (median and scaled MAD) from the calibration window, split into
+speaking and silent states and allowed to adapt slowly. Events, patterns, affect, engagement and
+talk time are built on top, each with its evidence level and the numbers that produced it.
 
-## What it does not do (yet, or ever)
-
-* Audio covers voice activity, pitch, loudness, pauses; no transcription, no diarization,
-  no question/answer timing yet (Phase 6).
-* Action Units come from OpenGraphAU (occurrence probabilities, research-dataset training,
-  not validated on our footage). Blendshape-derived AU hints stay labelled **"(proxy)"**.
-* No microexpression spotting. State of the art on public benchmarks is far from usable
-  (MEGC 2025 spot-then-recognize scores ~ 0.006-0.009); see `docs/scientific-limitations.md`.
-* No deception score. See the same document for why.
-* Single face per video; multi-person tracking is on the roadmap.
-* CLI live mode is video-only; the browser live tab has microphone support.
+* [Architecture](docs/architecture.md) and [design decisions](docs/adr/README.md)
+* [What the measurements can and cannot tell you](docs/scientific-limitations.md)
+* [Models, sizes and licences](docs/models.md), [benchmarks](docs/benchmarks.md)
 
 ## Documentation
 
-* `docs/architecture.md` - pipeline, module boundaries, data model
-* `docs/scientific-limitations.md` - what the signals can and cannot support
-* `docs/privacy.md`, `docs/security.md` - data handling and threat model
-* `docs/licensing.md`, `docs/models.md`, `docs/datasets.md` - every third-party component and why it was accepted or rejected
-* `docs/research/` - stack research with sources; answers to the founding research questions
-* `docs/roadmap.md`, `docs/project-state.md` - where we are and what's next
-* `docs/adr/` - architecture decision records
+| Guide | |
+|---|---|
+| [Installation](docs/installation.md) | installers, from source, Docker, network access, troubleshooting |
+| [User guide](docs/user-guide.md) | running sessions, reading results, clients, reports |
+| [Ethics and intended use](docs/ethics.md) | consent, what not to use it for, talking to clients |
+| [Privacy](docs/privacy.md) and [Security](docs/security.md) | what is stored where, access control |
+| [Scientific limitations](docs/scientific-limitations.md) | the honest version of every measure |
+| [Development](docs/development.md) and [Contributing](CONTRIBUTING.md) | building, testing, conventions |
 
 ## Development
 
 ```bash
-uv sync && uv run pre-commit install
-uv run pytest -q              # 55 tests, ~5 s; model tests skip unless the model is cached
-uv run ruff check src tests && uv run mypy
+git clone https://github.com/sarat1kyan/lietome && cd lietome
+uv sync --extra asr                         # Python 3.12 environment with dev tools
+(cd frontend && npm ci && npm run build)    # web UI
+uv run lightman setup                       # models + benchmark
+uv run lightman serve                       # http://127.0.0.1:8710
+uv run pytest -q                            # tests
 ```
-
-Python >= 3.12. Tested on macOS (Apple Silicon) and Linux in CI. See `CONTRIBUTING.md`.
 
 ## License
 
-Apache-2.0 (see `LICENSE`). Third-party model and dataset licenses are tracked in
-`docs/licensing.md`; nothing with research-only or non-commercial terms ships in the core.
+Apache-2.0. Models are downloaded at first use from their original sources, pinned by SHA-256;
+each keeps its own licence (Apache-2.0 or MIT), listed in [docs/licensing.md](docs/licensing.md).
 
-## Disclaimer
-
-Lightman is inspired by the fictional behavioral-analysis work portrayed in the television
-series *Lie to Me*. It is an independent open-source project. It is not affiliated with,
-endorsed by, or connected to that series, its producers, broadcasters, cast, rights holders,
-or any researcher depicted or referenced by it. No material from the series is used.
-
-Lightman analyzes observable behavioral signals. It does not and cannot provide reliable lie
-detection, and its output must not be used as evidence of anyone's honesty, intent, or
-character.
+Lightman is built by Mher Saratikyan.

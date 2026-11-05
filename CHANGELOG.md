@@ -4,6 +4,23 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-05
+
+Lightman for people who work with people: consent, clients, expressed affect, engagement and
+talk time, a new interface, and one-line installers.
+
+### Added (ADR-031)
+- `scripts/install.sh` and `scripts/install.ps1`: install uv, the latest release with
+  speech-to-text, and the models.
+- `lightman setup`: download and verify models, benchmark, print how to start.
+- Wheel includes the web interface and the benchmark image; release workflow for tags `v*`
+  (GitHub release, image on ghcr.io).
+- Docs: installation, user guide, ethics and intended use; issue and pull request templates.
+
+### Changed (ADR-031)
+- Sessions go to the user data folder unless `./output` exists; `serve` prints the path.
+- README rewritten.
+
 ### Changed (ADR-030)
 - New interface: home, clients, sessions with Overview/Review/Conversation/Research tabs, live, settings; onboarding; upload with consent; practice and research profiles; profile-aware report.
 

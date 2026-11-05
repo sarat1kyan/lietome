@@ -10,6 +10,10 @@ minimal reproduction (a crafted media file is ideal) and the Lightman version.
 
 We aim to acknowledge reports within 7 days.
 
+## Supported versions
+
+Security fixes go into the latest release only.
+
 ## Scope of hardening (current)
 
 * Media is demuxed/decoded with PyAV in-process. Lightman never builds shell commands and never
@@ -18,9 +22,12 @@ We aim to acknowledge reports within 7 days.
   are limit-checked before pixel memory is allocated (`lightman.media.limits`).
 * Model assets are pinned by SHA-256 and size in `src/lightman/models/manifest.json`; downloads
   are streamed with a byte cap, written to a temp file, verified, then atomically renamed.
-* No pickle/torch.load of untrusted files. Current model runtime is MediaPipe (`.task` bundle
-  of TFLite flatbuffers).
+* No pickle or torch.load of untrusted files. Model runtimes are MediaPipe (TFLite), ONNX
+  Runtime and CTranslate2.
 * Outputs never persist absolute input paths; only the file name and hash.
+* The server listens on 127.0.0.1 by default. Network mode requires a random access token and
+  serves HTTPS with a self-signed certificate; proxied requests are never treated as local.
+* Client export and erasure are confined to the sessions folder; client codes are validated.
 * CI runs `pip-audit` and secret scanning.
 
 See `docs/security.md` for the threat model and roadmap.
