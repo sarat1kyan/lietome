@@ -17,6 +17,7 @@ export interface LiveFrameMsg {
   skin_rois?: number[][] | null
   patterns?: { name: string; score: number; enter: number }[] | null
   hints?: string[]
+  affect?: { valence: number; arousal: number } | null
   body?: { shoulders: number[][]; elbows: number[][]; wrists: number[][] } | null
   gaze_away_since_us?: number | null
   stats: { analyzed_fps: number; latency_ms_p50: number | null; frames_dropped: number; frames_analyzed: number }

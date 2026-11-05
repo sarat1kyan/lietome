@@ -67,6 +67,14 @@ export const api = {
     if (!r.ok) throw new Error(`erase: ${r.status}`)
     return r.json()
   },
+  async practice(id: string): Promise<any> {
+    if (demo()) return { status: 'unavailable' }
+    return getJson(`./api/sessions/${id}/practice`)
+  },
+  async trends(code: string): Promise<{ sessions: any[]; measures: string[] }> {
+    if (demo()) return { sessions: [], measures: [] }
+    return getJson(`./api/clients/${encodeURIComponent(code)}/trends`)
+  },
   async notes(id: string): Promise<Note[]> {
     if (demo()) return []
     return (await getJson<{ notes: Note[] }>(`./api/sessions/${id}/notes`)).notes

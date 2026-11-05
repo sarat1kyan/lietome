@@ -4,6 +4,9 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+### Added (ADR-029)
+- Expressed affect (valence, arousal) live and per session; engagement; talk time split by mouth movement; practice summary per session; per-client trends.
+
 ### Added (ADR-028)
 - Clients (pseudonymous codes), consent records required before analysis, session notes, client export (zip) and erasure.
 - Settings: practice or research profile, practitioner initials.

@@ -75,7 +75,9 @@ from lightman.pipeline.analyze import (
     _nan_to_none,
     _new_session_id,
 )
+from lightman.practice.affect import StreamingAffect
 from lightman.practice.notes import Note, write_notes
+from lightman.practice.summary import write_practice_summary
 from lightman.protocol import Marker, summarize_protocol
 from lightman.protocol.control import control_referenced
 from lightman.report.narrative import build_narrative, cues_narrative, protocol_narrative
@@ -123,6 +125,7 @@ class FrameResult:
     baseline_ready: bool
     pulse: PulseEstimate | None = None
     body: dict[str, list[list[float]]] | None = None
+    affect: tuple[float, float] | None = None
     hints: list[str] = field(default_factory=list)
     """Capture-quality coaching for the operator (move closer, more light, ...)."""
 
@@ -187,6 +190,7 @@ class LiveAnalyzer:
         """This subject's norms from earlier sessions (set by the caller before frames arrive)."""
         self.norms_root: Path | None = None
         self.norms_report: dict[str, Any] | None = None
+        self.affect = StreamingAffect()
         self.consent: Any = None
         """ConsentRecord confirmed before the session started (set by the caller)."""
         self._speaking_phase_us = 0
@@ -387,6 +391,7 @@ class LiveAnalyzer:
                 self.novelty.update(t_us, quality, values)  # learning the familiar combinations
             if self.expressions is not None:
                 self.expressions.learn(quality, values)  # resting level per pattern
+            self.affect.learn(values, quality)
             if self.baseline.update(t_us, quality, values, speaking=speaking):
                 self._arm_detectors()
                 self.baseline_just_ready = True
@@ -480,6 +485,7 @@ class LiveAnalyzer:
             baseline_ready=self.baseline.ready,
             pulse=pulse_now,
             body=self._last_body_pts if faces else None,
+            affect=self.affect.update(values, quality) if faces and self.baseline.ready else None,
             hints=hints,
         )
 
@@ -578,6 +584,7 @@ class LiveAnalyzer:
             )
         if self.novelty is not None:
             self.novelty.finish_learning(snap.quality)
+        self.affect.finish_learning()
         sh = snap.signals.get("body.shoulder_y")
         if self.pose is not None:
             self.body_events = StreamingBodyEvents(
@@ -1099,6 +1106,11 @@ class LiveAnalyzer:
         ]
         if live_notes:
             write_notes(session_dir, live_notes)
+        try:
+            write_practice_summary(session_dir)
+            outputs.append(_artifact(session_dir / "practice.json", "json"))
+        except (OSError, ValueError, KeyError) as exc:
+            log.warning("practice_summary_failed", error=str(exc))
         if self.norms_root is not None and self.baseline.snapshot is not None:
             update_norms(
                 self.norms_root,

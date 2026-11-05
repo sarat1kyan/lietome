@@ -331,6 +331,14 @@ async def live_endpoint(
                                 ),
                                 "hints": res.hints,
                                 "body": res.body,
+                                "affect": (
+                                    {
+                                        "valence": round(res.affect[0], 3),
+                                        "arousal": round(res.affect[1], 3),
+                                    }
+                                    if res.affect is not None
+                                    else None
+                                ),
                                 "skin_rois": (
                                     [
                                         [round(v, 4) for v in box]

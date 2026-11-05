@@ -206,6 +206,23 @@ def create_app(
         except ClientError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.get("/api/sessions/{session_id}/practice")
+    def get_practice(session_id: str) -> Any:
+        doc = store.read_json(session_id, "practice.json")
+        if doc is None:
+            from lightman.practice.summary import write_practice_summary
+
+            doc = write_practice_summary(store.session_dir(session_id))
+        return doc
+
+    @app.get("/api/clients/{code}/trends")
+    def get_trends(code: str) -> dict[str, Any]:
+        from lightman.practice.summary import client_trends
+
+        if not CODE_RE.match(code):
+            raise HTTPException(status_code=422, detail="invalid client code")
+        return client_trends(clients.session_dirs(code))
+
     @app.get("/api/sessions/{session_id}/notes")
     def get_notes(session_id: str) -> dict[str, Any]:
         return notes_payload(store.session_dir(session_id))

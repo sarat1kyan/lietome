@@ -107,6 +107,7 @@ class SessionStore:
             "media.json",
             "consent.json",
             "notes.json",
+            "practice.json",
         }:
             raise SessionNotFoundError("unknown artifact")
         p = d / name
