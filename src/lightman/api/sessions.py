@@ -105,6 +105,8 @@ class SessionStore:
             "pulse.json",
             "transcript.json",
             "media.json",
+            "consent.json",
+            "notes.json",
         }:
             raise SessionNotFoundError("unknown artifact")
         p = d / name

@@ -1,4 +1,4 @@
-import type { CompareResult, FeatureSeries, FrameSnapshot, History, LmEvent, PulseSeries, Range, SessionDetail, SessionSummary } from './types'
+import type { ClientRow, Note, Settings, CompareResult, FeatureSeries, FrameSnapshot, History, LmEvent, PulseSeries, Range, SessionDetail, SessionSummary } from './types'
 
 // Demo mode: a build can inline a session (window.__LIGHTMAN_DEMO__) so the UI runs with no server.
 declare global {
@@ -43,6 +43,46 @@ export const api = {
   async validation(subject: string): Promise<any> {
     if (demo()) return { n_items: 0 }
     return getJson(`./api/subjects/${encodeURIComponent(subject)}/validation`)
+  },
+  async settings(): Promise<Settings> {
+    if (demo()) return { profile: 'practice', require_consent: true, onboarded: true, practitioner: '' }
+    return getJson('./api/settings')
+  },
+  async saveSettings(s: Partial<Settings>): Promise<Settings> {
+    const r = await fetch('./api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(s) })
+    if (!r.ok) throw new Error(`settings: ${r.status}`)
+    return r.json()
+  },
+  async clients(): Promise<ClientRow[]> {
+    if (demo()) return []
+    return getJson('./api/clients')
+  },
+  async saveClient(code: string, body: { label?: string; note?: string }): Promise<void> {
+    const r = await fetch(`./api/clients/${encodeURIComponent(code)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail ?? `client: ${r.status}`)
+  },
+  exportClientUrl(code: string): string { return `./api/clients/${encodeURIComponent(code)}/export` },
+  async eraseClient(code: string): Promise<{ sessions_removed: string[] }> {
+    const r = await fetch(`./api/clients/${encodeURIComponent(code)}?confirm=${encodeURIComponent(code)}`, { method: 'DELETE' })
+    if (!r.ok) throw new Error(`erase: ${r.status}`)
+    return r.json()
+  },
+  async notes(id: string): Promise<Note[]> {
+    if (demo()) return []
+    return (await getJson<{ notes: Note[] }>(`./api/sessions/${id}/notes`)).notes
+  },
+  async addNote(id: string, text: string, tUs: number | null): Promise<Note> {
+    const r = await fetch(`./api/sessions/${id}/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, t_us: tUs }) })
+    if (!r.ok) throw new Error(`note: ${r.status}`)
+    return r.json()
+  },
+  async editNote(id: string, noteId: string, text: string, tUs: number | null): Promise<Note> {
+    const r = await fetch(`./api/sessions/${id}/notes/${noteId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, t_us: tUs }) })
+    if (!r.ok) throw new Error(`note: ${r.status}`)
+    return r.json()
+  },
+  async deleteNote(id: string, noteId: string): Promise<void> {
+    await fetch(`./api/sessions/${id}/notes/${noteId}`, { method: 'DELETE' })
   },
   async uploadRecording(id: string, blob: Blob, offsetUs: number): Promise<void> {
     const fd = new FormData()

@@ -13,6 +13,8 @@ from lightman.pipeline import analyze_video
 from tests.conftest import noise_frames, write_video
 from tests.unit.test_pipeline_fake import FakeLandmarker
 
+CONSENT_FORM = {"consent": '{"given_by": "client", "scope": ["video_analysis"]}'}
+
 
 @pytest.fixture(scope="module")
 def session_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
@@ -93,13 +95,22 @@ def test_upload_rejects_empty_and_oversize(session_root: Path) -> None:
         update={"limits": LightmanConfig().limits.model_copy(update={"max_file_bytes": 1000})}
     )
     c = TestClient(create_app(session_root, cfg))
-    assert c.post("/api/analyze", files={"file": ("e.mp4", b"")}).status_code == 400
-    assert c.post("/api/analyze", files={"file": ("big.mp4", b"x" * 5000)}).status_code == 413
+    assert (
+        c.post("/api/analyze", files={"file": ("e.mp4", b"")}, data=CONSENT_FORM).status_code == 400
+    )
+    assert (
+        c.post(
+            "/api/analyze", files={"file": ("big.mp4", b"x" * 5000)}, data=CONSENT_FORM
+        ).status_code
+        == 413
+    )
     assert not list(session_root.glob(".upload-*"))
 
 
 def test_upload_job_failure_is_reported(client: TestClient, session_root: Path) -> None:
-    r = client.post("/api/analyze", files={"file": ("bad.mp4", b"not a video" * 100)})
+    r = client.post(
+        "/api/analyze", files={"file": ("bad.mp4", b"not a video" * 100)}, data=CONSENT_FORM
+    )
     assert r.status_code == 202
     jid = r.json()["job_id"]
     import time

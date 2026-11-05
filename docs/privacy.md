@@ -10,6 +10,9 @@ Lightman processes biometric behavioral data. Defaults are local-only and minima
 | Decoded frames | Process memory only. | No. |
 | Landmarks (478x3/frame) | Process memory; turned into scalar features. | No (unless `storage.store_landmarks = true`, currently unimplemented flag reserved). |
 | Blendshape coefficients, head pose, EAR, quality | `features.parquet` | Yes (session dir). |
+| Client entry (code, optional label and note) | `<output>/_clients/<code>.json` | Yes, on this machine. Export or erase from the Clients page. |
+| Consent record (who agreed, how, scope, time) | `consent.json` per session | Yes. |
+| Practitioner notes | `notes.json` per session | Yes. |
 | Subject norms (median calibration center/spread per signal, last 20 sessions) | `<output>/_subjects/<id>.json` | Yes. Delete the file to reset. |
 | Skin color means (3 floats/frame over forehead and cheeks, for the pulse estimate) | `features.parquet`, `pulse.json` | Yes (session dir). Not an identifier; disable with `[pulse] enabled = false`. |
 | Session audio (live) | Process memory (int16), transcribed after the session, then released. | No. Only the transcript is kept. |

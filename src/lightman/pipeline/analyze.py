@@ -238,6 +238,7 @@ def analyze_video(
     transcriber_factory: Any = None,
     registry: ModelRegistry | None = None,
     subject_id: str = "subject_001",
+    consent: Any = None,
 ) -> AnalysisResult:
     cfg = cfg or LightmanConfig()
     registry = registry or ModelRegistry(
@@ -819,6 +820,15 @@ def analyze_video(
         except LightmanError as exc:
             log.warning("transcription_failed", error=str(exc))
         timing["speech_ms"] = (time.perf_counter() - ts0) * 1000
+    from lightman.practice.consent import CLI_CONSENT_NOTE
+
+    _write_json(
+        session_dir / "consent.json",
+        {"recorded": True, **consent.model_dump()}
+        if consent is not None
+        else {"recorded": False, "note": CLI_CONSENT_NOTE},
+    )
+    outputs.append(_artifact(session_dir / "consent.json", "json"))
     analysis_path = session_dir / "analysis.json"
     summary["timing_ms"] = timing
     _write_json(analysis_path, _nan_to_none(summary))

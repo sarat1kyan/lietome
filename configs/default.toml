@@ -116,6 +116,10 @@ enabled = true
 model_group = "whisper__base"
 compute_type = "int8"
 
+[practice]                   # consent gate and default interface profile
+require_consent = true
+profile = "practice"           # practice | research (research adds the deception-cue layer)
+
 [storage]
 store_landmarks = false      # 478x3 per frame is large and biometric; off by default
 write_report = true

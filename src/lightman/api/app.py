@@ -8,6 +8,7 @@ is deleted after analysis. No absolute paths are returned.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shutil
@@ -16,11 +17,12 @@ import threading
 import uuid
 from importlib import resources
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, WebSocket
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from lightman import __version__
 from lightman.api.live_ws import AUFactory, LandmarkerFactory, live_endpoint
@@ -31,6 +33,11 @@ from lightman.config import LightmanConfig
 from lightman.core.errors import LightmanError
 from lightman.core.logging import get_logger
 from lightman.models import ModelRegistry
+from lightman.practice.clients import CODE_RE, Client, ClientError, ClientStore
+from lightman.practice.consent import ConsentRecord
+from lightman.practice.notes import delete as delete_note
+from lightman.practice.notes import notes_payload
+from lightman.practice.notes import upsert as upsert_note
 
 log = get_logger(__name__)
 
@@ -58,6 +65,22 @@ class JobRegistry:
             return dict(j) if j else None
 
 
+class SettingsBody(BaseModel):
+    profile: Literal["practice", "research"] | None = None
+    onboarded: bool | None = None
+    practitioner: str | None = Field(default=None, max_length=64)
+
+
+class ClientBody(BaseModel):
+    label: str | None = Field(default=None, max_length=80)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class NoteBody(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    t_us: int | None = Field(default=None, ge=0)
+
+
 def create_app(
     output_root: Path,
     cfg: LightmanConfig | None = None,
@@ -68,6 +91,8 @@ def create_app(
 ) -> FastAPI:
     cfg = cfg or LightmanConfig()
     store = SessionStore(output_root)
+    clients = ClientStore(output_root)
+    settings_path = output_root / "_settings.json"
     registry = ModelRegistry(
         cache_dir=cfg.models.cache_dir, allow_download=cfg.models.allow_download
     )
@@ -121,6 +146,88 @@ def create_app(
         wanted = [s for s in signals.split(",") if s]
         return store.features(session_id, table=table, signals=wanted, max_points=max_points)
 
+    # ---------------------------------------------------------------- practice
+    @app.get("/api/settings")
+    def get_settings() -> dict[str, Any]:
+        saved: dict[str, Any] = {}
+        if settings_path.is_file():
+            with contextlib.suppress(OSError, ValueError):
+                saved = json.loads(settings_path.read_text("utf-8"))
+        return {
+            "profile": saved.get("profile", cfg.practice.profile),
+            "require_consent": cfg.practice.require_consent,
+            "onboarded": bool(saved.get("onboarded", False)),
+            "practitioner": str(saved.get("practitioner", ""))[:64],
+        }
+
+    @app.put("/api/settings")
+    def put_settings(body: SettingsBody) -> dict[str, Any]:
+        output_root.mkdir(parents=True, exist_ok=True)
+        current = get_settings()
+        current.update({k: v for k, v in body.model_dump().items() if v is not None})
+        current.pop("require_consent", None)
+        settings_path.write_text(json.dumps(current, indent=1))
+        return get_settings()
+
+    @app.get("/api/clients")
+    def list_clients() -> list[dict[str, Any]]:
+        return clients.list()
+
+    @app.put("/api/clients/{code}")
+    def put_client(code: str, body: ClientBody) -> dict[str, Any]:
+        try:
+            existing = clients.get(code)
+            base = existing or Client(code=code)
+            saved = clients.save(base.model_copy(update=body.model_dump(exclude_none=True)))
+        except (ClientError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return saved.model_dump()
+
+    @app.get("/api/clients/{code}/export")
+    def export_client(code: str) -> Response:
+        try:
+            data = clients.export_zip(code)
+        except ClientError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return Response(
+            data,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="lightman-{code}.zip"'},
+        )
+
+    @app.delete("/api/clients/{code}")
+    def erase_client(code: str, confirm: Annotated[str, Query()] = "") -> dict[str, Any]:
+        if confirm != code:
+            raise HTTPException(
+                status_code=409, detail="erasure needs ?confirm=<client code> to match"
+            )
+        try:
+            return clients.erase(code)
+        except ClientError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/sessions/{session_id}/notes")
+    def get_notes(session_id: str) -> dict[str, Any]:
+        return notes_payload(store.session_dir(session_id))
+
+    @app.post("/api/sessions/{session_id}/notes", status_code=201)
+    def add_note(session_id: str, body: NoteBody) -> dict[str, Any]:
+        return upsert_note(store.session_dir(session_id), None, body.text, body.t_us).model_dump()
+
+    @app.put("/api/sessions/{session_id}/notes/{note_id}")
+    def edit_note(session_id: str, note_id: str, body: NoteBody) -> dict[str, Any]:
+        try:
+            n = upsert_note(store.session_dir(session_id), note_id, body.text, body.t_us)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown note") from exc
+        return n.model_dump()
+
+    @app.delete("/api/sessions/{session_id}/notes/{note_id}", status_code=204)
+    def remove_note(session_id: str, note_id: str) -> Response:
+        if not delete_note(store.session_dir(session_id), note_id):
+            raise HTTPException(status_code=404, detail="unknown note")
+        return Response(status_code=204)
+
     @app.get("/api/subjects/{subject}/validation")
     def get_validation(subject: str) -> dict[str, Any]:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", subject):
@@ -168,6 +275,9 @@ def create_app(
     ) -> dict[str, Any]:
         """Attach a recording made in the browser during a live session (opt-in)."""
         d = store.session_dir(session_id)
+        consent_doc = store.read_json(session_id, "consent.json") or {}
+        if cfg.practice.require_consent and "recording" not in consent_doc.get("scope", []):
+            raise HTTPException(status_code=403, detail="recording is outside the consent scope")
         ctype = (file.content_type or "").split(";")[0]
         ext = {"video/webm": "webm", "video/mp4": "mp4"}.get(ctype)
         if ext is None:
@@ -211,7 +321,21 @@ def create_app(
         keep_media: Annotated[bool, Form()] = False,
         target_fps: Annotated[float | None, Form()] = None,
         au: Annotated[bool, Form()] = True,
+        client: Annotated[str, Form()] = "subject_001",
+        consent: Annotated[str | None, Form()] = None,
     ) -> dict[str, Any]:
+        consent_rec: ConsentRecord | None = None
+        if consent:
+            try:
+                consent_rec = ConsentRecord.model_validate_json(consent)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="invalid consent record") from exc
+        if cfg.practice.require_consent and (
+            consent_rec is None or not consent_rec.allows("video_analysis")
+        ):
+            raise HTTPException(status_code=428, detail="consent required for analysis")
+        if not CODE_RE.match(client):
+            raise HTTPException(status_code=422, detail="invalid client code")
         output_root.mkdir(parents=True, exist_ok=True)
         tmp_dir = Path(tempfile.mkdtemp(prefix=".upload-", dir=output_root))
         dest = tmp_dir / "upload.bin"
@@ -246,7 +370,9 @@ def create_app(
             jobs.update(jid, state="running")
             final: dict[str, Any]
             try:
-                result = analyze_video(dest, output_root, run_cfg)
+                result = analyze_video(
+                    dest, output_root, run_cfg, subject_id=client, consent=consent_rec
+                )
                 if keep_media:
                     shutil.move(str(dest), result.session_dir / "media.mp4")
                 final = {"state": "done", "session_id": result.session_id}

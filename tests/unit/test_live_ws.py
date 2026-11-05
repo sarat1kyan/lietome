@@ -14,6 +14,8 @@ from lightman.api.app import create_app
 from lightman.config import BaselineConfig, BodyConfig, LightmanConfig, ModelsConfig, SpeechConfig
 from tests.unit.test_pipeline_fake import FakeLandmarker
 
+CONSENT = {"given_by": "self", "scope": ["video_analysis"]}
+
 
 def _jpeg(w: int = 160, h: int = 120, seed: int = 0) -> bytes:
     rng = np.random.default_rng(seed)
@@ -38,7 +40,11 @@ def test_live_ws_round_trip(tmp_path: Path) -> None:
     app = create_app(tmp_path, cfg, landmarker_factory=lambda _c, _r: fake)
     client = TestClient(app)
     with client.websocket_connect("/api/live") as ws:
-        ws.send_text(json.dumps({"type": "start", "au": False, "audio": False, "source": "test"}))
+        ws.send_text(
+            json.dumps(
+                {"type": "start", "au": False, "audio": False, "source": "test", "consent": CONSENT}
+            )
+        )
         ready = ws.receive_json()
         ws.send_text(json.dumps({"type": "phase", "speaking": False}))
         assert ready["type"] == "ready" and ready["session_id"]
@@ -100,7 +106,7 @@ def test_live_ws_rejects_bad_frame_and_ignores_garbage(tmp_path: Path) -> None:
     client = TestClient(app)
     with client.websocket_connect("/api/live") as ws:
         ws.send_bytes(_frame_msg(0, _jpeg()))  # before start: ignored
-        ws.send_text(json.dumps({"type": "start", "au": False, "audio": False}))
+        ws.send_text(json.dumps({"type": "start", "au": False, "audio": False, "consent": CONSENT}))
         assert ws.receive_json()["type"] == "ready"
         ws.send_bytes(_frame_msg(0, b"not a jpeg"))
         err = ws.receive_json()

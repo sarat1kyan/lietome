@@ -247,6 +247,21 @@ class SpeechConfig(BaseModel):
     language: str | None = Field(default=None, description="ISO code, or None to detect")
 
 
+class PracticeConfig(BaseModel):
+    """Practice settings: consent and which layers the interface shows."""
+
+    model_config = ConfigDict(frozen=True)
+
+    require_consent: bool = Field(
+        default=True, description="Refuse live and uploaded analysis without a consent record"
+    )
+    profile: str = Field(
+        default="practice",
+        pattern="^(practice|research)$",
+        description="practice: affect, engagement, talk time; research adds deception cues",
+    )
+
+
 class GazeConfig(BaseModel):
     """Sustained gaze-away episodes from the eye-look proxy and head yaw."""
 
@@ -295,6 +310,7 @@ class LightmanConfig(BaseModel):
     gaze: GazeConfig = GazeConfig()
     body: BodyConfig = BodyConfig()
     speech: SpeechConfig = SpeechConfig()
+    practice: PracticeConfig = PracticeConfig()
     storage: StorageConfig = StorageConfig()
     privacy: PrivacyConfig = PrivacyConfig()
     models: ModelsConfig = ModelsConfig()

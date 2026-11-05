@@ -75,6 +75,7 @@ from lightman.pipeline.analyze import (
     _nan_to_none,
     _new_session_id,
 )
+from lightman.practice.notes import Note, write_notes
 from lightman.protocol import Marker, summarize_protocol
 from lightman.protocol.control import control_referenced
 from lightman.report.narrative import build_narrative, cues_narrative, protocol_narrative
@@ -186,6 +187,8 @@ class LiveAnalyzer:
         """This subject's norms from earlier sessions (set by the caller before frames arrive)."""
         self.norms_root: Path | None = None
         self.norms_report: dict[str, Any] | None = None
+        self.consent: Any = None
+        """ConsentRecord confirmed before the session started (set by the caller)."""
         self._speaking_phase_us = 0
         self._last_frame_t: int | None = None
         self._last_body_pts: dict[str, list[list[float]]] | None = None
@@ -1081,6 +1084,21 @@ class LiveAnalyzer:
                 signals_to_plot=self.cfg.events.signals,
             )
             outputs.append(_artifact(report_path, "html"))
+        (session_dir / "consent.json").write_text(
+            json.dumps(
+                {"recorded": True, **self.consent.model_dump()}
+                if self.consent is not None
+                else {"recorded": False, "note": "no consent record was attached to this session"},
+                indent=1,
+            )
+        )
+        live_notes = [
+            Note(t_us=m.t_us, text=m.text)
+            for m in self.markers
+            if m.kind == "note" and m.text.strip()
+        ]
+        if live_notes:
+            write_notes(session_dir, live_notes)
         if self.norms_root is not None and self.baseline.snapshot is not None:
             update_norms(
                 self.norms_root,
