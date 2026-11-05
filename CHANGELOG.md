@@ -4,6 +4,9 @@ All notable changes are recorded here. Format follows Keep a Changelog; versions
 
 ## [Unreleased]
 
+### Changed (ADR-030)
+- New interface: home, clients, sessions with Overview/Review/Conversation/Research tabs, live, settings; onboarding; upload with consent; practice and research profiles; profile-aware report.
+
 ### Added (ADR-029)
 - Expressed affect (valence, arousal) live and per session; engagement; talk time split by mouth movement; practice summary per session; per-client trends.
 

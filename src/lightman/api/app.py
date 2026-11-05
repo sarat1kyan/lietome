@@ -169,6 +169,42 @@ def create_app(
         settings_path.write_text(json.dumps(current, indent=1))
         return get_settings()
 
+    @app.get("/api/system")
+    def get_system() -> dict[str, Any]:
+        """What is installed and ready on this machine."""
+        import importlib.util
+
+        from lightman.core.bench import bench_path
+
+        bench = None
+        bp = bench_path()
+        if bp.is_file():
+            with contextlib.suppress(OSError, ValueError):
+                b = json.loads(bp.read_text("utf-8"))
+                bench = {
+                    "created": b.get("created"),
+                    "live_au_model": b.get("live_au_model"),
+                    "models": {k: v.get("p50_ms") for k, v in b.get("models", {}).items()},
+                }
+        groups: dict[str, bool] = {}
+        models = []
+        for e in registry.entries():
+            if e.group:
+                groups[e.group] = groups.get(e.group, True) and registry.is_cached(e.model_id)
+                continue
+            models.append(
+                {"id": e.model_id, "cached": registry.is_cached(e.model_id), "bytes": e.size_bytes}
+            )
+        models += [{"id": g, "cached": ok, "bytes": None} for g, ok in groups.items()]
+        return {
+            "version": __version__,
+            "data_dir": str(output_root.resolve()),
+            "models": models,
+            "speech_installed": importlib.util.find_spec("faster_whisper") is not None,
+            "bench": bench,
+            "network": token is not None,
+        }
+
     @app.get("/api/clients")
     def list_clients() -> list[dict[str, Any]]:
         return clients.list()
@@ -255,7 +291,10 @@ def create_app(
     def get_share(session_id: str) -> HTMLResponse:
         from lightman.report.share import render_share_report
 
-        return HTMLResponse(render_share_report(store.session_dir(session_id)))
+        profile = get_settings()["profile"]
+        return HTMLResponse(
+            render_share_report(store.session_dir(session_id), research=profile == "research")
+        )
 
     @app.get("/api/sessions/{session_id}/history")
     def get_history(session_id: str) -> dict[str, Any]:

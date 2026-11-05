@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { research } from '../lib/settings.svelte'
   import { tc } from '../lib/api'
   let { protocol, onseek }: { protocol: any; onseek: (us: number) => void } = $props()
   const qs = $derived((protocol?.questions ?? []) as any[])
   const cvr = $derived(protocol?.control_vs_relevant ?? {})
   const gt = $derived(protocol?.ground_truth ?? {})
   const notes = $derived((protocol?.notes ?? []) as string[])
+  const rs = $derived(research())
   const poss = $derived(protocol?.possibility ?? null)
   const idxColor = (v: number | null) => (v == null ? 'var(--muted)' : v < 40 ? 'var(--cool)' : v < 55 ? 'var(--muted)' : v < 70 ? 'var(--accent)' : 'var(--warn)')
   const f = (v: number | null | undefined, d = 0) => (v == null ? '-' : v.toFixed(d))
@@ -15,7 +17,7 @@
   <div class="hdr"><span class="eyebrow">interview protocol</span><span class="muted">click a row to seek</span></div>
   <div class="wrap">
   <table class="mono">
-    <thead><tr><th>#</th><th>cat</th><th class="txt">question</th><th>asked</th><th>latency</th><th>speech</th><th>dev/min</th><th>max SD</th><th>episodes</th><th>blink/min</th><th>pitch SD</th><th class="txt">signals</th><th class="txt">answer</th><th class="txt">expressions</th><th>cues</th><th>index</th><th>vs control</th></tr></thead>
+    <thead><tr><th>#</th><th>cat</th><th class="txt">question</th><th>asked</th><th>latency</th><th>speech</th><th>dev/min</th><th>max SD</th><th>episodes</th><th>blink/min</th><th>pitch SD</th><th class="txt">signals</th><th class="txt">answer</th><th class="txt">expressions</th>{#if rs}<th>cues</th><th>index</th><th>vs control</th>{/if}</tr></thead>
     <tbody>
       {#each qs as q (q.id)}
         <tr class:rel={q.category === 'relevant'} class:ctl={q.category === 'control'} onclick={() => onseek(q.start_us)}>
@@ -26,24 +28,26 @@
           <td class="txt">{q.top_signals.map((t: any) => `${t.feature.replace(/^(blendshape|au)\./, '')} x${t.count}`).join(', ')}</td>
           <td class="txt sans ans" title={q.answer ? `${q.answer.words} words, ${q.answer.wpm ?? '-'} wpm, ${q.answer.hedges} hedges, ${q.answer.denials} denials` : ''}>{q.answer?.text ? (q.answer.text.length > 90 ? q.answer.text.slice(0, 88) + '...' : q.answer.text) : '-'}</td>
           <td class="txt sans expr">{(q.expression_patterns ?? []).join(', ') || '-'}</td>
+{#if rs}
           <td title={q.cues ? q.cues.cues.filter((c: any) => c.present).map((c: any) => c.name).join(', ') || 'none present' : ''}>{q.cues ? `${q.cues.present}/${q.cues.evaluated}` : '-'}</td>
           <td title={q.cue_index?.text ?? ''} style:color={idxColor(q.cue_index?.value ?? null)}>{q.cue_index?.value != null ? `${Math.round(q.cue_index.value)} ${q.cue_index.band}` : '-'}</td>
           <td title={(q.control_shift ?? []).map((r: any) => `${r.signal} ${r.shift_sd >= 0 ? '+' : ''}${r.shift_sd} SD`).join(', ')} style:color={idxColor(q.control_index?.value ?? null)}>{q.control_index?.value != null ? `${Math.round(q.control_index.value)} ${q.control_index.band}` : '-'}</td>
+          {/if}
         </tr>
       {/each}
     </tbody>
   </table>
   </div>
   <div class="cmp">
-    {#if poss?.text}
+    {#if rs && poss?.text}
       <span class="poss"><b>possibility of deception, cue-based:</b> {poss.text}</span>
     {/if}
-    {#if cvr.delta_deviations_per_min != null}
+    {#if rs && cvr.delta_deviations_per_min != null}
       <span>relevant minus control: <b class="mono">{cvr.delta_deviations_per_min >= 0 ? '+' : ''}{f(cvr.delta_deviations_per_min, 1)}</b> dev/min{#if cvr.delta_latency_ms != null}, <b class="mono">{cvr.delta_latency_ms >= 0 ? '+' : ''}{f(cvr.delta_latency_ms)}</b> ms latency{/if}{#if cvr.permutation_p_deviations != null}, permutation p <b class="mono">{f(cvr.permutation_p_deviations, 2)}</b>{/if} (n {cvr.n_control} control, {cvr.n_relevant} relevant)</span>
     {/if}
-    {#if gt.by_score}
+    {#if rs && gt.by_score}
       <span>discrimination of the instructed lies: {#each Object.entries(gt.by_score) as [k, r] (k)}{@const rr = r as any}<b class="mono">{k.replace('_', ' ')} {rr.auroc ?? '-'}</b>{rr.ci95 ? ` (95% ${rr.ci95[0]} to ${rr.ci95[1]})` : ''}; {/each}0.5 = chance.</span>
-    {:else if gt.auroc != null}
+    {:else if rs && gt.auroc != null}
       <span>expected-class discrimination: AUROC <b class="mono">{f(gt.auroc, 2)}</b> over {gt.n_truth} truth / {gt.n_lie} lie items (0.5 = chance). experimental, one person, one session.</span>
     {/if}
     {#each notes as n}<span class="note">{n}</span>{/each}

@@ -70,6 +70,14 @@ def _img(d: Path, event_id: str) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(p.read_bytes()).decode("ascii")
 
 
+def _pct(x: Any) -> str:
+    return "-" if x is None else f"{round(100 * x)}%"
+
+
+def _sgn(x: Any) -> str:
+    return "-" if x is None else f"{x:+.2f}"
+
+
 def _band_color(v: float | None) -> str:
     if v is None:
         return "var(--muted)"
@@ -104,7 +112,7 @@ def _gauge(idx: dict[str, Any] | None, label: str) -> str:
     )
 
 
-def render_share_report(session_dir: Path) -> str:
+def render_share_report(session_dir: Path, *, research: bool = False) -> str:
     d = session_dir
     a = _read(d, "analysis.json") or {}
     m = _read(d, "manifest.json") or {}
@@ -128,8 +136,8 @@ def render_share_report(session_dir: Path) -> str:
     )
     parts.append(
         "<p class='caveat'>Measurements of face, head, eyes, voice and pulse against this "
-        "person's own baseline. Nothing here identifies an emotion, an intention or a lie. "
-        "Indices are weighted shares of weak research cues, not probabilities.</p>"
+        "person's own baseline. Nothing here identifies an emotion, an intention or a lie, and "
+        "nothing here is a diagnosis.</p>"
     )
     stats = [
         ("episodes", counts.get("episode", 0)),
@@ -144,31 +152,78 @@ def render_share_report(session_dir: Path) -> str:
         + "".join(f"<div><b>{_e(v)}</b><span>{_e(k)}</span></div>" for k, v in stats)
         + "</section>"
     )
-    sc = (a.get("session_cues") or {}).get("index")
-    poss = (proto or {}).get("possibility") if proto else None
-    parts.append("<section><h2>Possibility of deception, cue-based</h2>")
-    parts.append(_gauge(sc, "whole session (discounted: no within-person comparison)"))
-    if poss and poss.get("text"):
-        parts.append(f"<p class='poss'>{_e(poss['text'])}</p>")
-    parts.append("</section>")
+    pr = _read(d, "practice.json") or {}
+    if pr.get("status") == "done":
+        af = pr.get("affect") or {}
+        talk = pr.get("talk") or {}
+        eng = pr.get("engagement") or {}
+
+        parts.append(
+            "<section><h2>Session overview</h2><div class='stats'>"
+            f"<div><b>{_sgn(af.get('valence_mean'))}</b><span>valence (mean)</span></div>"
+            f"<div><b>{_sgn(af.get('arousal_mean'))}</b><span>arousal (mean)</span></div>"
+            f"<div><b>{_pct(eng.get('share'))}</b><span>oriented to conversation</span></div>"
+            f"<div><b>{_pct(talk.get('client_share'))}</b><span>client talk share</span></div>"
+            f"<div><b>{_e(pr.get('speech_rate_syl_s') or '-')}</b><span>syllables per second</span></div>"
+            f"<div><b>{_e(pr.get('pauses', 0))}</b><span>long pauses</span></div>"
+            f"</div><p class='meta'>{_e(pr.get('note', ''))}</p></section>"
+        )
+    notes = (_read(d, "notes.json") or {}).get("notes", [])
+    if notes:
+        parts.append(
+            "<section><h2>Practitioner notes</h2><ul>"
+            + "".join(
+                f"<li><b>{_e(format_timecode(n['t_us'])[3:]) if n.get('t_us') is not None else 'general'}</b> "
+                f"{_e(n['text'])}</li>"
+                for n in notes
+            )
+            + "</ul></section>"
+        )
+    consent = _read(d, "consent.json")
+    if consent:
+        parts.append(
+            "<p class='meta'>Consent: "
+            + (
+                f"{_e(consent.get('given_by'))}, {_e(consent.get('method'))}, scope "
+                f"{_e(', '.join(consent.get('scope', [])))}, recorded {_e(consent.get('at_utc', ''))}"
+                if consent.get("recorded")
+                else _e(consent.get("note", "not recorded"))
+            )
+            + "</p>"
+        )
+    if research:
+        sc = (a.get("session_cues") or {}).get("index")
+        poss = (proto or {}).get("possibility") if proto else None
+        parts.append("<section><h2>Possibility of deception, cue-based (research)</h2>")
+        parts.append(_gauge(sc, "whole session (discounted: no within-person comparison)"))
+        if poss and poss.get("text"):
+            parts.append(f"<p class='poss'>{_e(poss['text'])}</p>")
+        parts.append("</section>")
     if proto and proto.get("questions"):
         rows = []
         for q in proto["questions"]:
             ci = q.get("control_index") or {}
             qi = q.get("cue_index") or {}
             lat = q.get("response_latency_ms")
+            idx_cells = (
+                f"<td style='color:{_band_color(qi.get('value'))}'>{'-' if qi.get('value') is None else round(qi['value'])}</td>"
+                f"<td style='color:{_band_color(ci.get('value'))}'>{'-' if ci.get('value') is None else round(ci['value'])}</td>"
+                if research
+                else ""
+            )
             rows.append(
                 f"<tr class='{_e(q['category'])}'><td>{_e(q['id'])}</td><td>{_e(q['category'])}</td>"
                 f"<td class='txt'>{_e(q['text'])}</td><td>{'-' if lat is None else f'{lat:.0f} ms'}</td>"
                 f"<td>{_e(q['deviations'])}</td>"
-                f"<td style='color:{_band_color(qi.get('value'))}'>{'-' if qi.get('value') is None else round(qi['value'])}</td>"
-                f"<td style='color:{_band_color(ci.get('value'))}'>{'-' if ci.get('value') is None else round(ci['value'])}</td>"
+                f"{idx_cells}"
+                f"<td class='txt'>{_e((q.get('answer') or {}).get('text', ''))}</td>"
                 f"<td class='txt'>{_e(', '.join(q.get('expression_patterns', [])[:3]))}</td></tr>"
             )
         parts.append(
             "<section><h2>Questions</h2><div class='wrap'><table><thead><tr><th>#</th><th>type</th>"
-            "<th>question</th><th>latency</th><th>deviations</th><th>index vs calibration</th>"
-            "<th>index vs control answers</th><th>patterns</th></tr></thead><tbody>"
+            "<th>question</th><th>latency</th><th>deviations</th>"
+            + ("<th>index vs calibration</th><th>index vs control answers</th>" if research else "")
+            + "<th>answer</th><th>patterns</th></tr></thead><tbody>"
             + "".join(rows)
             + "</tbody></table></div></section>"
         )
@@ -192,7 +247,12 @@ def render_share_report(session_dir: Path) -> str:
             + ", ".join(f"{_e(k)} {v}" for k, v in sorted(patterns.items(), key=lambda kv: -kv[1]))
             + ". Patterns name what the face looked like, not what was felt.</p></section>"
         )
-    narr = a.get("narrative") or []
+    narr = [
+        x
+        for x in (a.get("narrative") or [])
+        if research
+        or not str(x).startswith(("Possibility of deception", "Deception-research cues"))
+    ]
     if narr:
         parts.append(
             "<section><h2>What happened</h2><ul>"

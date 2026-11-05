@@ -19,6 +19,11 @@
   import PracticeCard from './components/PracticeCard.svelte'
   import ClientsView from './components/ClientsView.svelte'
   import SubjectView from './components/SubjectView.svelte'
+  import HomeView from './components/HomeView.svelte'
+  import SettingsView from './components/SettingsView.svelte'
+  import Onboarding from './components/Onboarding.svelte'
+  import UploadDialog from './components/UploadDialog.svelte'
+  import { app, loadSettings, research } from './lib/settings.svelte'
   const subjectMode = typeof location !== 'undefined' && location.hash === '#subject'
 
   let sessions = $state<SessionSummary[]>([])
@@ -33,7 +38,10 @@
   let playhead = $state(0) // microseconds
   let error = $state<string | null>(null)
   let loading = $state(false)
-  let view = $state<'sessions' | 'live' | 'clients'>('sessions')
+  let view = $state<'home' | 'sessions' | 'live' | 'clients' | 'settings'>('home')
+  let tab = $state<'overview' | 'review' | 'conversation' | 'research'>('overview')
+  let uploading = $state(false)
+  let onboarding = $state(false)
   let compare = $state<{ a: Range | null; b: Range | null } | null>(null)
   function setRange(which: 'a' | 'b', r: Range) { compare = { a: which === 'a' ? r : compare?.a ?? null, b: which === 'b' ? r : which === 'a' ? null : compare?.b ?? null } }
 
@@ -50,6 +58,7 @@
       audio = s.has_audio ? await api.features(s.session_id, 'audio', AUDIO_SIGNALS) : null
       pulse = await api.pulse(s.session_id).catch(() => null)
       playhead = 0; compare = null
+      if (tab === 'research' && !research()) tab = 'overview'
     } catch (e) {
       error = String(e)
     } finally {
@@ -58,7 +67,7 @@
   }
 
   function seekTo(us: number) { playhead = us }
-  function pick(e: LmEvent) { selected = e; playhead = e.peak_us ?? e.start_us }
+  function pick(e: LmEvent) { selected = e; playhead = e.peak_us ?? e.start_us; if (tab !== 'review') tab = 'review' }
 
   async function reload(selectId?: string) {
     sessions = await api.sessions()
@@ -66,12 +75,13 @@
     if (target) await open(target)
   }
   async function liveDone(sessionId: string) {
-    view = 'sessions'
+    view = 'sessions'; tab = 'overview'
     try { await reload(sessionId) } catch (e) { error = String(e) }
   }
+  async function openSession(s: SessionSummary) { view = 'sessions'; tab = 'overview'; await open(s) }
 
   function onKey(ev: KeyboardEvent) {
-    if (view !== 'sessions' || !current) return
+    if (view !== 'sessions' || !current || tab !== 'review') return
     const tag = (ev.target as HTMLElement)?.tagName
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
     const list = events.filter((e) => e.event_type !== 'blink').sort((a, b) => a.start_us - b.start_us)
@@ -88,7 +98,9 @@
   onMount(async () => {
     if (subjectMode) return
     window.addEventListener('keydown', onKey)
-    try { await reload() } catch (e) { error = String(e) }
+    await loadSettings()
+    onboarding = !api.isDemo() && app.settings !== null && !app.settings.onboarded
+    try { sessions = await api.sessions(); if (sessions[0]) await open(sessions[0]) } catch (e) { error = String(e) }
     return () => window.removeEventListener('keydown', onKey)
   })
 </script>
@@ -96,91 +108,137 @@
 {#if subjectMode}
 <SubjectView />
 {:else}
-<div class="app">
+{#if onboarding}<Onboarding ondone={() => (onboarding = false)} />{/if}
+{#if uploading}<UploadDialog onclose={() => (uploading = false)} ondone={async (id) => { uploading = false; view = 'sessions'; tab = 'overview'; await reload(id) }} />{/if}
+<div class="app" class:with-rail={view === 'sessions'} class:with-panel={view === 'sessions' && tab === 'review'}>
   <header class="top">
     <div class="brand-nav">
-    <div class="brand">
-      <span class="mark"></span>
-      <span class="name">Lightman</span>
-      <span class="eyebrow">behavioral analysis workstation</span>
+      <button class="brand" onclick={() => (view = 'home')} aria-label="home">
+        <span class="mark"></span><span class="name">Lightman</span>
+      </button>
+      <nav class="nav" aria-label="main">
+        <button class:on={view === 'home'} onclick={() => (view = 'home')}>Home</button>
+        <button class:on={view === 'clients'} onclick={() => (view = 'clients')}>Clients</button>
+        <button class:on={view === 'sessions'} onclick={() => (view = 'sessions')}>Sessions</button>
+        <button class:on={view === 'live'} onclick={() => (view = 'live')} disabled={api.isDemo()} title={api.isDemo() ? 'needs lightman serve' : ''}>Live</button>
+        <button class:on={view === 'settings'} onclick={() => (view = 'settings')}>Settings</button>
+      </nav>
     </div>
-    <nav class="nav">
-      <button class:on={view === 'clients'} onclick={() => (view = 'clients')}>clients</button>
-      <button class:on={view === 'sessions'} onclick={() => (view = 'sessions')}>sessions</button>
-      <button class:on={view === 'live'} onclick={() => (view = 'live')} disabled={api.isDemo()} title={api.isDemo() ? 'needs lightman serve' : ''}>live</button>
-    </nav>
-    </div>
-    <div class="top-right muted">
+    <div class="top-right">
       {#if api.isDemo()}<span class="chip">demo data</span>{/if}
-      {#if view === 'sessions' && current}<button class="cmpbtn" class:on={Boolean(compare)} onclick={() => (compare = compare ? null : { a: null, b: null })}>{compare ? 'exit compare' : 'compare spans'}</button>{/if}
-      <span class="keys mono" title="keyboard">arrows seek, shift+arrows 5 s, j/k next/prev event, c compare, esc clear</span>
-      <span>observations and interpretations of measured behavior. not a lie detector.</span>
+      <button class="upload" onclick={() => (uploading = true)} disabled={api.isDemo()}>Analyse a recording</button>
+      <span class="profile" class:research={app.settings?.profile === 'research'} title="change in Settings">{app.settings?.profile ?? 'practice'}</span>
     </div>
   </header>
 
-  <SessionRail {sessions} current={current?.session_id ?? null} onselect={open} />
+  {#if view === 'sessions'}<SessionRail {sessions} current={current?.session_id ?? null} onselect={open} />{/if}
 
-  {#if view === 'clients'}
-    <ClientsView onopen={async (id) => { view = 'sessions'; await reload(id) }} />
+  {#if view === 'home'}
+    <HomeView {sessions} onlive={() => (view = 'live')} onupload={() => (uploading = true)} onopen={openSession} onclients={() => (view = 'clients')} />
+  {:else if view === 'clients'}
+    <ClientsView onopen={async (id) => { view = 'sessions'; tab = 'overview'; await reload(id) }} />
+  {:else if view === 'settings'}
+    <SettingsView />
   {:else if view === 'live'}
     <LiveView ondone={liveDone} />
   {:else}
   <main class="stage">
     {#if error}<div class="error">{error}</div>{/if}
     {#if current && detail}
-      <VideoStage session={current} {events} {selected} bind:playhead />
-      <FramePanel sessionId={current.session_id} {playhead} />
-      <Timeline {events} {video} {audio} {pulse} {protocol} baseline={detail.baseline} audioBaseline={detail.audio_baseline}
-                duration={current.duration_us ?? 0} bind:playhead {selected} onpick={pick} onseek={seekTo} {compare} onrange={setRange} />
-      {#if compare}
-        <ComparePanel sessionId={current.session_id} a={compare.a} b={compare.b} {protocol} onclear={() => (compare = null)} onpreset={(a, b) => (compare = { a, b })} />
+      <div class="tabs" role="tablist">
+        <div class="title"><span class="code mono">{current.subject_id ?? '-'}</span><span class="muted">{current.mode === 'live' ? 'live session' : current.media_name ?? ''}</span></div>
+        <button role="tab" aria-selected={tab === 'overview'} class:on={tab === 'overview'} onclick={() => (tab = 'overview')}>Overview</button>
+        <button role="tab" aria-selected={tab === 'review'} class:on={tab === 'review'} onclick={() => (tab = 'review')}>Review</button>
+        <button role="tab" aria-selected={tab === 'conversation'} class:on={tab === 'conversation'} onclick={() => (tab = 'conversation')}>Conversation</button>
+        {#if research()}<button role="tab" aria-selected={tab === 'research'} class:on={tab === 'research'} onclick={() => (tab = 'research')}>Research</button>{/if}
+        <span class="spacer"></span>
+        {#if tab === 'review'}<button class="cmpbtn" class:on={Boolean(compare)} onclick={() => (compare = compare ? null : { a: null, b: null })}>{compare ? 'exit compare' : 'compare spans'}</button>{/if}
+        <a class="report" href={`./api/sessions/${current.session_id}/share`} target="_blank" rel="noopener">Report</a>
+      </div>
+      {#if tab === 'overview'}
+        <div class="scroll">
+          <PracticeCard sessionId={current.session_id} {playhead} onseek={(us) => { seekTo(us); tab = 'review' }} />
+          <SummaryCard {detail} {events} />
+          <KeyMoments {events} session={current} onpick={pick} />
+          <NotesPanel sessionId={current.session_id} {playhead} onseek={(us) => { seekTo(us); tab = 'review' }} />
+          <QualityStrip {detail} {events} />
+        </div>
+      {:else if tab === 'review'}
+        <div class="review">
+          <VideoStage session={current} {events} {selected} bind:playhead />
+          <FramePanel sessionId={current.session_id} {playhead} />
+          <Timeline {events} {video} {audio} {pulse} {protocol} baseline={detail.baseline} audioBaseline={detail.audio_baseline}
+                    duration={current.duration_us ?? 0} bind:playhead {selected} onpick={pick} onseek={seekTo} {compare} onrange={setRange} />
+          {#if compare}
+            <ComparePanel sessionId={current.session_id} a={compare.a} b={compare.b} {protocol} onclear={() => (compare = null)} onpreset={(a, b) => (compare = { a, b })} />
+          {/if}
+          <p class="keys mono">arrows seek, shift+arrows 5 s, j/k next or previous event, c compare spans, esc clear</p>
+        </div>
+      {:else if tab === 'conversation'}
+        <div class="scroll">
+          <TranscriptPanel sessionId={current.session_id} {playhead} onseek={(us) => { seekTo(us); tab = 'review' }} />
+          <ProtocolTable {protocol} onseek={(us) => { seekTo(us); tab = 'review' }} />
+          <NotesPanel sessionId={current.session_id} {playhead} onseek={(us) => { seekTo(us); tab = 'review' }} />
+        </div>
+      {:else}
+        <div class="scroll">
+          <SummaryCard {detail} {events} researchOnly />
+          <ProtocolTable {protocol} onseek={(us) => { seekTo(us); tab = 'review' }} />
+          <HistoryCard sessionId={current.session_id} />
+        </div>
       {/if}
-      <PracticeCard sessionId={current.session_id} {playhead} onseek={seekTo} />
-      <NotesPanel sessionId={current.session_id} {playhead} onseek={seekTo} />
-      <TranscriptPanel sessionId={current.session_id} {playhead} onseek={seekTo} />
-      <KeyMoments {events} session={current} onpick={pick} />
-      <ProtocolTable {protocol} onseek={seekTo} />
-      <SummaryCard {detail} {events} />
-      <HistoryCard sessionId={current.session_id} />
-      <QualityStrip {detail} {events} />
     {:else if !loading}
       <div class="empty">
-        <p class="eyebrow">no sessions</p>
-        <p>Run <code class="mono">lightman analyze video.mp4 -o output/</code> then reload, or drop a file on the rail.</p>
+        <p class="eyebrow">no sessions yet</p>
+        <p>Start a live session, or analyse a recording with the button at the top.</p>
       </div>
     {/if}
   </main>
   {/if}
 
-  <EventPanel {selected} {events} session={current} baseline={detail?.baseline ?? null} onpick={pick} />
+  {#if view === 'sessions' && tab === 'review'}<EventPanel {selected} {events} session={current} baseline={detail?.baseline ?? null} onpick={pick} />{/if}
 </div>
 {/if}
-
 
 <style>
   .app {
     display: grid;
-    grid-template-columns: 232px minmax(0, 1fr) 340px;
-    grid-template-rows: 44px minmax(0, 1fr);
-    grid-template-areas: "top top top" "rail stage panel";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 48px minmax(0, 1fr);
+    grid-template-areas: "top" "stage";
     height: 100vh;
   }
-  .brand-nav { display: flex; align-items: center; }
-  .top { grid-area: top; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  .brand { display: flex; align-items: baseline; gap: 12px; }
-  .nav { display: flex; gap: 4px; margin-left: 24px; }
-  .nav button { background: none; border-color: transparent; color: var(--muted); padding: 4px 10px; }
+  .app.with-rail { grid-template-columns: 232px minmax(0, 1fr); grid-template-areas: "top top" "rail stage"; }
+  .app.with-rail.with-panel { grid-template-columns: 232px minmax(0, 1fr) 340px; grid-template-areas: "top top top" "rail stage panel"; }
+  .top { grid-area: top; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--panel); gap: 12px; }
+  .brand-nav { display: flex; align-items: center; gap: 20px; min-width: 0; }
+  .brand { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; color: var(--text); cursor: pointer; }
+  .mark { width: 11px; height: 11px; border: 2px solid var(--accent); transform: rotate(45deg); display: inline-block; }
+  .name { font-weight: 600; letter-spacing: 0.02em; font-size: 15px; }
+  .nav { display: flex; gap: 2px; overflow-x: auto; }
+  .nav button { background: none; border-color: transparent; color: var(--muted); padding: 5px 11px; font-size: 13px; }
   .nav button.on { color: var(--text); border-color: var(--line-strong); background: var(--panel-2); }
   .nav button:disabled { opacity: 0.4; cursor: default; }
-  .mark { width: 10px; height: 10px; background: var(--accent); display: inline-block; transform: translateY(1px); }
-  .name { font-weight: 600; letter-spacing: 0.02em; font-size: 14px; }
-  .top-right { display: flex; gap: 12px; align-items: center; font-size: 12px; }
-  .keys { font-size: 10.5px; color: var(--faint); }
+  .top-right { display: flex; gap: 10px; align-items: center; font-size: 12px; }
+  .upload { padding: 5px 12px; font-size: 12.5px; border-color: var(--accent); color: var(--accent); }
+  .profile { font: 500 10.5px/1 var(--font-data); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border: 1px solid var(--line-strong); padding: 4px 7px; border-radius: 3px; }
+  .profile.research { color: var(--violet); border-color: var(--violet); }
   .chip { border: 1px solid var(--accent); color: var(--accent); padding: 1px 7px; border-radius: 10px; font-size: 11px; }
-  .stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto auto auto auto auto auto auto auto; min-height: 0; background: var(--ground); overflow-y: auto; }
+  .stage { grid-area: stage; display: flex; flex-direction: column; min-height: 0; background: var(--ground); }
+  .tabs { display: flex; align-items: center; gap: 4px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  .tabs .title { display: flex; gap: 10px; align-items: baseline; margin-right: 14px; font-size: 13px; }
+  .tabs .code { color: var(--accent); font-size: 14px; }
+  .tabs button[role='tab'] { background: none; border-color: transparent; color: var(--muted); padding: 4px 11px; font-size: 13px; }
+  .tabs button[role='tab'].on { color: var(--text); border-color: var(--line-strong); background: var(--panel-2); }
+  .spacer { flex: 1; }
+  .report { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 3px 10px; color: var(--text); text-decoration: none; font-size: 12px; }
+  .scroll { overflow-y: auto; min-height: 0; flex: 1; }
+  .review { display: grid; grid-template-rows: minmax(260px, 1fr) auto auto auto auto; min-height: 0; flex: 1; overflow-y: auto; }
+  .keys { font-size: 10.5px; color: var(--faint); margin: 6px 16px 10px; }
   .empty { padding: 48px; color: var(--muted); }
   .error { margin: 12px; padding: 10px 12px; border: 1px solid var(--warn); color: var(--warn); border-radius: var(--radius); }
   code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; }
   .cmpbtn { padding: 2px 9px; font-size: 11px; }
   .cmpbtn.on { border-color: var(--accent); color: var(--accent); }
+  .muted { color: var(--muted); }
 </style>
